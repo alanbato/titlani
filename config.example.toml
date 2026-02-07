@@ -1,0 +1,21 @@
+[server]
+host = "0.0.0.0"
+port = 1958
+hostname = "example.com"
+mailbox_dir = "mailboxes"
+# certfile = "server.pem"
+# keyfile = "server.key"
+# identity_certfile = "identity.pem"
+# identity_keyfile = "identity.key"
+
+[rate_limit]
+enable = false
+capacity = 10.0
+refill_rate = 1.0
+retry_after = 30
+
+[access_control]
+enable = false
+allow_list = []
+deny_list = []
+default_allow = true

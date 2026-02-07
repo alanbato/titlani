@@ -1,0 +1,18 @@
+"""Misfin(C) protocol constants."""
+
+DEFAULT_PORT = 1958
+
+MAX_HEADER_SIZE = 1024
+MAX_CONTENT_LENGTH = 16384
+MAX_METADATA_LINE_SIZE = 1024
+MAX_RESPONSE_SIZE = 2048
+
+CRLF = b"\r\n"
+LF = b"\n"
+TAB = b"\t"
+SPACE = b" "
+
+MISFIN_SCHEME = "misfin"
+
+REQUEST_TIMEOUT = 30.0
+MAX_REDIRECTS = 5
