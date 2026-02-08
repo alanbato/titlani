@@ -72,10 +72,14 @@ async def start_server(
         )
 
     # Create TLS context
+    # NOTE: request_client_cert=False because OpenSSL 3.x with CERT_OPTIONAL
+    # rejects self-signed client certs (no CA to verify against), causing
+    # silent TLS handshake failures. Sender identity is carried in the
+    # gemmail message metadata instead.
     ssl_context = create_server_context(
         certfile=str(certfile),
         keyfile=str(keyfile),
-        request_client_cert=True,
+        request_client_cert=False,
     )
 
     # Build middleware chain

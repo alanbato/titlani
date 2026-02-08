@@ -11,6 +11,22 @@ All Misfin connections use TLS. There is no plaintext mode. Both client and serv
 
 Certificates are self-signed. There is no Certificate Authority (CA) hierarchy. Trust is established through TOFU, similar to SSH's `known_hosts`.
 
+### TLS and Self-Signed Client Certificates
+
+This is a [known challenge in the Misfin protocol](https://misfin.org/): TLS libraries are not designed for the pattern of requesting non-mandatory, self-signed client certificates without a CA trust chain.
+
+Specifically, OpenSSL 3.x changed the behavior of `CERT_OPTIONAL` (the TLS mode that requests a client certificate without requiring one). In older OpenSSL versions, if a client presented a self-signed cert that couldn't be verified against any CA, the handshake continued and the cert was still accessible. In OpenSSL 3.x, this causes a **silent TLS handshake failure** — the connection is dropped with no error message.
+
+Python's `ssl` module does not expose a custom verify callback, so there is no way to say "request the certificate but skip chain verification" using the standard library.
+
+**Titlani's workaround:** The server does not request client certificates at the TLS level. Instead, sender identity is carried in the gemmail message metadata (the sender line), which the client populates from its identity certificate before sending. This means:
+
+- The server **cannot** cryptographically verify the sender's identity at the transport layer
+- Sender information in the gemmail metadata is **self-reported** by the client
+- The server **can** still verify the server-to-client direction via TOFU
+
+This is a protocol-level limitation shared by Misfin implementations on modern TLS stacks, not specific to Titlani. Messages are also not encrypted at rest — intermediaries with access to the server's storage can read delivered messages, even though the transport is encrypted.
+
 ## Identity Certificates
 
 Misfin identity certificates use a custom layout:
@@ -21,7 +37,7 @@ Misfin identity certificates use a custom layout:
 | Common Name (CN) | Human-readable blurb (e.g., `Alice Smith`) |
 | SAN DNS | Hostname (e.g., `example.com`) |
 
-This layout embeds the full Misfin address (`alice@example.com`) and an optional display name directly in the certificate. The server extracts this identity from the client certificate to populate the sender fields.
+This layout embeds the full Misfin address (`alice@example.com`) and an optional display name directly in the certificate. The client extracts its own identity from the certificate and includes it in the gemmail sender metadata before sending.
 
 ## Trust-On-First-Use (TOFU)
 
