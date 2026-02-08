@@ -1,21 +1,31 @@
 """Titlani Misfin(C) Protocol CLI."""
 
 import asyncio
-from importlib.metadata import version as get_version
 from pathlib import Path
 
 import typer
 from rich.console import Console
-from rich.table import Table
 
+from .cli import (
+    confirm_action,
+    display_gemmail_list,
+    display_gemmail_message,
+    display_identity_info,
+    display_server_config,
+    display_tofu_list,
+    display_verification_list,
+    display_version_info,
+    format_status_response,
+)
 from .client.session import MisfinClient
-from .content.gemmail import MisfinAddress
+from .content.gemmail import GemmailMessage, MisfinAddress
 from .identity.certificate import (
     extract_identity,
     generate_identity_cert,
     normalize_fingerprint,
 )
 from .protocol.constants import DEFAULT_PORT
+from .protocol.status import is_success
 from .server.config import ServerConfig
 from .server.server import start_server
 
@@ -80,27 +90,24 @@ def send(
 
     async def _send() -> None:
         try:
-            async with MisfinClient(
-                timeout=timeout,
-                client_cert=cert,
-                client_key=key,
-            ) as client:
-                response = await client.send(
-                    to=to,
-                    body=message,
-                    subject=subject,
-                    sender=sender,
-                )
-
-                if response.status == 20:
-                    console.print(
-                        f"[green]Message delivered[/] (fingerprint: {response.meta})"
+            with console.status(
+                f"[bold blue]Sending to {to}...",
+            ):
+                async with MisfinClient(
+                    timeout=timeout,
+                    client_cert=cert,
+                    client_key=key,
+                ) as client:
+                    response = await client.send(
+                        to=to,
+                        body=message,
+                        subject=subject,
+                        sender=sender,
                     )
-                elif 30 <= response.status < 40:
-                    console.print(f"[yellow]Redirect:[/] {response.meta}")
-                else:
-                    console.print(f"[red][{response.status}][/] {response.meta}")
-                    raise typer.Exit(code=1)
+
+            format_status_response(response.status, response.meta, console)
+            if not is_success(response.status):
+                raise typer.Exit(code=1)
 
         except ConnectionError as e:
             error_console.print(f"Connection error: {e}")
@@ -188,6 +195,7 @@ def serve(
             if mailbox_dir is not None:
                 config.mailbox_dir = mailbox_dir
 
+            display_server_config(config, console)
             await start_server(config, log_level=log_level)
 
         except ValueError as e:
@@ -256,26 +264,27 @@ def identity_generate(
         os.chmod(key_file, stat.S_IRUSR | stat.S_IWUSR)
 
         # Load and display info
-        from tlacacoca import load_certificate
+        from tlacacoca import (
+            get_certificate_fingerprint,
+            get_certificate_info,
+            load_certificate,
+        )
 
         cert = load_certificate(cert_file)
         identity = extract_identity(cert)
-        from tlacacoca import get_certificate_fingerprint
-
         fp = normalize_fingerprint(get_certificate_fingerprint(cert))
+        info = get_certificate_info(cert)
 
-        console.print("\n[bold green]Identity certificate generated![/]\n")
-
-        table = Table(show_header=False, box=None)
-        table.add_column("Key", style="bold cyan")
-        table.add_column("Value")
-        table.add_row("Address", identity.address)
-        table.add_row("Blurb", identity.blurb)
-        table.add_row("Certificate", str(cert_file))
-        table.add_row("Private key", str(key_file))
-        table.add_row("Fingerprint", fp[:32] + "...")
-
-        console.print(table)
+        console.print()
+        display_identity_info(
+            identity,
+            info,
+            fp,
+            console,
+            cert_file=cert_file,
+            key_file=key_file,
+            title="Identity Certificate Generated",
+        )
 
     except Exception as e:
         error_console.print(f"Error generating certificate: {e}")
@@ -306,18 +315,7 @@ def identity_info(
         info = get_certificate_info(cert)
         fp = normalize_fingerprint(get_certificate_fingerprint(cert))
 
-        table = Table(show_header=False, box=None)
-        table.add_column("Key", style="bold cyan")
-        table.add_column("Value")
-
-        table.add_row("Address", identity.address)
-        table.add_row("Blurb", identity.blurb)
-        table.add_row("Hostname", identity.hostname)
-        table.add_row("Fingerprint", fp)
-        table.add_row("Not Before", info["not_before"])
-        table.add_row("Not After", info["not_after"])
-
-        console.print(table)
+        display_identity_info(identity, info, fp, console)
 
     except Exception as e:
         error_console.print(f"Error reading certificate: {e}")
@@ -339,28 +337,7 @@ def tofu_list() -> None:
 
     db = TOFUDatabase()
     hosts = db.list_hosts()
-
-    if not hosts:
-        console.print("[yellow]No known hosts in TOFU database.[/]")
-        return
-
-    table = Table(title="Known Hosts (TOFU)")
-    table.add_column("Hostname", style="cyan")
-    table.add_column("Port", justify="right")
-    table.add_column("Fingerprint", style="dim")
-    table.add_column("First Seen")
-    table.add_column("Last Seen")
-
-    for host_info in hosts:
-        table.add_row(
-            host_info["hostname"],
-            str(host_info["port"]),
-            host_info["fingerprint"][:16] + "...",
-            host_info["first_seen"][:10],
-            host_info["last_seen"][:10],
-        )
-
-    console.print(table)
+    display_tofu_list(hosts, console)
 
 
 @tofu_app.command("revoke")
@@ -379,6 +356,13 @@ def tofu_revoke(
     db = TOFUDatabase()
     effective_port = port if port is not None else DEFAULT_PORT
 
+    if not confirm_action(
+        f"Revoke certificate for [cyan]{tofu_hostname}:{effective_port}[/]?",
+        console,
+    ):
+        console.print("[dim]Cancelled.[/]")
+        return
+
     if db.revoke(tofu_hostname, effective_port):
         console.print(
             f"[green]Revoked certificate for {tofu_hostname}:{effective_port}[/]"
@@ -387,12 +371,108 @@ def tofu_revoke(
         console.print(f"[yellow]Host {tofu_hostname}:{effective_port} not in database[/]")
 
 
+# Mail command group
+mail_app = typer.Typer(
+    help="Read stored mail",
+    no_args_is_help=True,
+)
+app.add_typer(mail_app, name="mail")
+
+
+@mail_app.command("list")
+def mail_list(
+    mailbox_dir: Path = typer.Argument(
+        ...,
+        help="Path to mailbox directory",
+        exists=True,
+        dir_okay=True,
+        file_okay=False,
+        resolve_path=True,
+    ),
+    mailbox: str | None = typer.Option(
+        None,
+        "--mailbox",
+        "-m",
+        help="Filter by specific mailbox name",
+    ),
+) -> None:
+    """List messages in a mailbox directory."""
+    messages: list[tuple[Path, GemmailMessage]] = []
+
+    if mailbox:
+        mbox_path = mailbox_dir / mailbox
+        if not mbox_path.is_dir():
+            error_console.print(f"Mailbox not found: {mailbox}")
+            raise typer.Exit(code=1)
+        search_paths = [mbox_path]
+    else:
+        search_paths = sorted(p for p in mailbox_dir.iterdir() if p.is_dir())
+
+    for mbox_path in search_paths:
+        for gemmail_file in sorted(mbox_path.glob("*.gemmail"), reverse=True):
+            try:
+                msg = GemmailMessage.from_bytes(gemmail_file.read_bytes())
+                messages.append((gemmail_file, msg))
+            except ValueError:
+                error_console.print(
+                    f"[yellow]Skipping invalid file: {gemmail_file.name}[/]"
+                )
+
+    display_gemmail_list(messages, console)
+
+
+@mail_app.command("read")
+def mail_read(
+    gemmail_file: Path = typer.Argument(
+        ...,
+        help="Path to .gemmail file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+) -> None:
+    """Read and display a gemmail message."""
+    try:
+        msg = GemmailMessage.from_bytes(gemmail_file.read_bytes())
+        display_gemmail_message(msg, console)
+    except ValueError as e:
+        error_console.print(f"Invalid gemmail format: {e}")
+        raise typer.Exit(code=1) from e
+
+
+# Verification command group
+verification_app = typer.Typer(
+    help="Manage sender verification cache",
+    no_args_is_help=True,
+)
+app.add_typer(verification_app, name="verification")
+
+
+@verification_app.command("list")
+def verification_list(
+    cache_path: Path | None = typer.Option(
+        None,
+        "--cache",
+        "-c",
+        help="Path to verification cache database",
+    ),
+) -> None:
+    """List all verified senders."""
+    from .verification.cache import SenderVerificationCache
+
+    cache = SenderVerificationCache(cache_path)
+    try:
+        entries = cache.list_verified()
+        display_verification_list(entries, console)
+    finally:
+        cache.close()
+
+
 @app.command()
 def version() -> None:
     """Show version information."""
-    console.print("[bold cyan]Titlani[/] Misfin(C) Protocol Client & Server")
-    console.print(f"[bold]Version:[/] {get_version('titlani')}")
-    console.print("[bold]Protocol:[/] Misfin(C)")
+    display_version_info(console)
 
 
 def main() -> None:
