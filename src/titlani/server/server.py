@@ -29,7 +29,7 @@ async def start_server(
     log_level: str = "INFO",
 ) -> None:
     """Start a Misfin server."""
-    configure_logging(level=log_level)
+    configure_logging(log_level=log_level)
     config.validate()
 
     certfile = config.certfile

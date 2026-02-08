@@ -23,9 +23,7 @@ class MisfinAddress:
         if "," in blurb:
             raise ValueError(f"Blurb must not contain commas: {blurb!r}")
         if "@" in blurb:
-            raise ValueError(
-                f"Blurb must not contain '@' symbol: {blurb!r}"
-            )
+            raise ValueError(f"Blurb must not contain '@' symbol: {blurb!r}")
         if "@" not in addr_part:
             raise ValueError(f"Invalid address format: {addr_part!r}")
         mailbox, hostname = addr_part.rsplit("@", 1)
@@ -66,9 +64,7 @@ class GemmailMessage:
         # Validate: CR only before LF
         for i, ch in enumerate(text):
             if ch == "\r" and (i + 1 >= len(text) or text[i + 1] != "\n"):
-                raise ValueError(
-                    "CR must only appear immediately before LF"
-                )
+                raise ValueError("CR must only appear immediately before LF")
 
         # Normalize line endings to LF for parsing
         text = text.replace("\r\n", "\n")
@@ -79,17 +75,14 @@ class GemmailMessage:
         # Filter: if last element is empty string from trailing \n, keep it
         # but we need at least 3 actual line terminators
         if len(lines) < 4:  # 3 metadata lines + at least empty trailing
-            raise ValueError(
-                "Message must have at least 3 metadata lines"
-            )
+            raise ValueError("Message must have at least 3 metadata lines")
 
         # Parse metadata lines and validate sizes
         for i in range(3):
             line_bytes = (lines[i] + "\n").encode("utf-8")
             if len(line_bytes) > MAX_METADATA_LINE_SIZE:
                 raise ValueError(
-                    f"Metadata line {i + 1} exceeds "
-                    f"{MAX_METADATA_LINE_SIZE} bytes"
+                    f"Metadata line {i + 1} exceeds {MAX_METADATA_LINE_SIZE} bytes"
                 )
 
         senders = _parse_address_line(lines[0])
@@ -154,7 +147,5 @@ def _parse_timestamp_line(line: str) -> list[datetime]:
             ts = datetime.fromisoformat(item.replace("Z", "+00:00"))
             timestamps.append(ts.astimezone(UTC))
         except ValueError as e:
-            raise ValueError(
-                f"Invalid timestamp: {item!r}"
-            ) from e
+            raise ValueError(f"Invalid timestamp: {item!r}") from e
     return timestamps

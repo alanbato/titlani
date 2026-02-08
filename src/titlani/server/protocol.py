@@ -58,9 +58,7 @@ class MisfinServerProtocol(asyncio.Protocol):
         self.awaiting_body = False
         self.received_first_byte = False
 
-    def connection_made(
-        self, transport: asyncio.BaseTransport
-    ) -> None:
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = transport  # type: ignore[assignment]
         if self.transport:
             self.peer_name = self.transport.get_extra_info("peername")
@@ -68,17 +66,13 @@ class MisfinServerProtocol(asyncio.Protocol):
 
         try:
             loop = asyncio.get_running_loop()
-            self.timeout_handle = loop.call_later(
-                REQUEST_TIMEOUT, self._handle_timeout
-            )
+            self.timeout_handle = loop.call_later(REQUEST_TIMEOUT, self._handle_timeout)
         except RuntimeError:
             self.timeout_handle = None
 
         logger.debug(
             "connection_established",
-            client_ip=(
-                self.peer_name[0] if self.peer_name else "unknown"
-            ),
+            client_ip=(self.peer_name[0] if self.peer_name else "unknown"),
         )
 
     def data_received(self, data: bytes) -> None:
@@ -93,22 +87,16 @@ class MisfinServerProtocol(asyncio.Protocol):
         if self.awaiting_body and self.request:
             if len(self.buffer) >= self.request.content_length:
                 self._cancel_timeout()
-                self.request.raw_message = self.buffer[
-                    : self.request.content_length
-                ]
+                self.request.raw_message = self.buffer[: self.request.content_length]
                 self._process_request()
 
     def _receive_header(self) -> None:
         """Phase 1: Accumulate until CRLF, parse header."""
         # DoS protection
-        if (
-            len(self.buffer) > MAX_HEADER_SIZE
-            and CRLF not in self.buffer
-        ):
+        if len(self.buffer) > MAX_HEADER_SIZE and CRLF not in self.buffer:
             self._send_error(
                 StatusCode.BAD_REQUEST,
-                f"Header exceeds maximum size "
-                f"({MAX_HEADER_SIZE} bytes)",
+                f"Header exceeds maximum size ({MAX_HEADER_SIZE} bytes)",
             )
             return
 
@@ -120,8 +108,7 @@ class MisfinServerProtocol(asyncio.Protocol):
         if len(header_line) + len(CRLF) > MAX_HEADER_SIZE:
             self._send_error(
                 StatusCode.BAD_REQUEST,
-                f"Header exceeds maximum size "
-                f"({MAX_HEADER_SIZE} bytes)",
+                f"Header exceeds maximum size ({MAX_HEADER_SIZE} bytes)",
             )
             return
 
@@ -139,9 +126,7 @@ class MisfinServerProtocol(asyncio.Protocol):
         if client_cert:
             self.request.client_cert = client_cert
             raw_fp = get_certificate_fingerprint(client_cert)
-            self.request.client_cert_fingerprint = (
-                normalize_fingerprint(raw_fp)
-            )
+            self.request.client_cert_fingerprint = normalize_fingerprint(raw_fp)
 
         if self.request.content_length == 0:
             self._cancel_timeout()
@@ -153,26 +138,19 @@ class MisfinServerProtocol(asyncio.Protocol):
         # Check if body already in buffer
         if len(self.buffer) >= self.request.content_length:
             self._cancel_timeout()
-            self.request.raw_message = self.buffer[
-                : self.request.content_length
-            ]
+            self.request.raw_message = self.buffer[: self.request.content_length]
             self._process_request()
 
     def _process_request(self) -> None:
         if not self.request:
             return
 
-        client_ip = (
-            self.peer_name[0] if self.peer_name else "unknown"
-        )
+        client_ip = self.peer_name[0] if self.peer_name else "unknown"
 
         # Process through middleware if present
         if self.middleware:
             try:
-                request_url = (
-                    f"misfin://{self.request.mailbox}"
-                    f"@{self.request.hostname}"
-                )
+                request_url = f"misfin://{self.request.mailbox}@{self.request.hostname}"
                 task = asyncio.create_task(
                     self.middleware.process_request(
                         request_url,
@@ -181,9 +159,7 @@ class MisfinServerProtocol(asyncio.Protocol):
                     )
                 )
                 task.add_done_callback(
-                    lambda t: self._handle_middleware_result(
-                        t, client_ip
-                    )
+                    lambda t: self._handle_middleware_result(t, client_ip)
                 )
                 return
             except RuntimeError:
@@ -195,9 +171,7 @@ class MisfinServerProtocol(asyncio.Protocol):
 
         self._route_request(client_ip)
 
-    def _handle_middleware_result(
-        self, task: asyncio.Task, client_ip: str
-    ) -> None:
+    def _handle_middleware_result(self, task: asyncio.Task, client_ip: str) -> None:
         try:
             result: MiddlewareResult = task.result()
             if not result.allowed:
@@ -206,13 +180,8 @@ class MisfinServerProtocol(asyncio.Protocol):
                     StatusCode.TEMPORARY_FAILURE,
                 )
                 meta = f"{status.name.replace('_', ' ').title()}"
-                if (
-                    result.retry_after
-                    and status == StatusCode.SLOW_DOWN
-                ):
-                    meta += (
-                        f". Retry after {result.retry_after}s"
-                    )
+                if result.retry_after and status == StatusCode.SLOW_DOWN:
+                    meta += f". Retry after {result.retry_after}s"
                 self._send_error(status, meta)
                 return
             self._route_request(client_ip)
@@ -222,9 +191,7 @@ class MisfinServerProtocol(asyncio.Protocol):
                 client_ip=client_ip,
                 error=str(e),
             )
-            self._send_error(
-                StatusCode.TEMPORARY_FAILURE, "Middleware error"
-            )
+            self._send_error(StatusCode.TEMPORARY_FAILURE, "Middleware error")
 
     def _route_request(self, client_ip: str) -> None:
         if not self.request:
@@ -232,22 +199,21 @@ class MisfinServerProtocol(asyncio.Protocol):
 
         try:
             result = self.message_handler(self.request)
-            if asyncio.iscoroutine(result):
-                try:
-                    task = asyncio.create_task(result)
-                    task.add_done_callback(
-                        lambda t: self._handle_handler_result(
-                            t, client_ip
-                        )
-                    )
-                    return
-                except RuntimeError:
-                    self._send_error(
-                        StatusCode.TEMPORARY_FAILURE,
-                        "Server error",
-                    )
-                    return
-            self._send_response(result)
+            if isinstance(result, MisfinResponse):
+                self._send_response(result)
+                return
+            try:
+                task = asyncio.ensure_future(result)
+                task.add_done_callback(
+                    lambda t: self._handle_handler_result(t, client_ip)
+                )
+                return
+            except RuntimeError:
+                self._send_error(
+                    StatusCode.TEMPORARY_FAILURE,
+                    "Server error",
+                )
+                return
         except Exception as e:
             logger.error(
                 "handler_error",
@@ -259,9 +225,7 @@ class MisfinServerProtocol(asyncio.Protocol):
                 f"Server error: {e}",
             )
 
-    def _handle_handler_result(
-        self, task: asyncio.Task, client_ip: str
-    ) -> None:
+    def _handle_handler_result(self, task: asyncio.Task, client_ip: str) -> None:
         try:
             response = task.result()
             self._send_response(response)
@@ -282,15 +246,11 @@ class MisfinServerProtocol(asyncio.Protocol):
 
         duration_ms = 0.0
         if self.request_start_time:
-            duration_ms = (
-                time.time() - self.request_start_time
-            ) * 1000
+            duration_ms = (time.time() - self.request_start_time) * 1000
 
         logger.info(
             "request_completed",
-            client_ip=(
-                self.peer_name[0] if self.peer_name else "unknown"
-            ),
+            client_ip=(self.peer_name[0] if self.peer_name else "unknown"),
             status=response.status,
             duration_ms=round(duration_ms, 2),
         )

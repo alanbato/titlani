@@ -32,13 +32,9 @@ app = typer.Typer(
 
 @app.command()
 def send(
-    to: str = typer.Argument(
-        ..., help="Recipient address (mailbox@hostname)"
-    ),
+    to: str = typer.Argument(..., help="Recipient address (mailbox@hostname)"),
     message: str = typer.Argument(..., help="Message body"),
-    subject: str | None = typer.Option(
-        None, "--subject", "-s", help="Message subject"
-    ),
+    subject: str | None = typer.Option(None, "--subject", "-s", help="Message subject"),
     cert: Path | None = typer.Option(
         None,
         "--cert",
@@ -63,14 +59,10 @@ def send(
 ) -> None:
     """Send a Misfin message."""
     if cert and not key:
-        error_console.print(
-            "Error: --key is required when --cert is provided"
-        )
+        error_console.print("Error: --key is required when --cert is provided")
         raise typer.Exit(code=1)
     if key and not cert:
-        error_console.print(
-            "Error: --cert is required when --key is provided"
-        )
+        error_console.print("Error: --cert is required when --key is provided")
         raise typer.Exit(code=1)
 
     # Build sender address from cert if provided
@@ -102,18 +94,12 @@ def send(
 
                 if response.status == 20:
                     console.print(
-                        f"[green]Message delivered[/] "
-                        f"(fingerprint: {response.meta})"
+                        f"[green]Message delivered[/] (fingerprint: {response.meta})"
                     )
                 elif 30 <= response.status < 40:
-                    console.print(
-                        f"[yellow]Redirect:[/] {response.meta}"
-                    )
+                    console.print(f"[yellow]Redirect:[/] {response.meta}")
                 else:
-                    console.print(
-                        f"[red][{response.status}][/] "
-                        f"{response.meta}"
-                    )
+                    console.print(f"[red][{response.status}][/] {response.meta}")
                     raise typer.Exit(code=1)
 
         except ConnectionError as e:
@@ -141,12 +127,8 @@ def serve(
         dir_okay=False,
         resolve_path=True,
     ),
-    host: str | None = typer.Option(
-        None, "--host", "-h", help="Server host address"
-    ),
-    port: int | None = typer.Option(
-        None, "--port", "-p", help="Server port"
-    ),
+    host: str | None = typer.Option(None, "--host", "-h", help="Server host address"),
+    port: int | None = typer.Option(None, "--port", "-p", help="Server port"),
     hostname: str | None = typer.Option(
         None, "--hostname", help="Server hostname for mail routing"
     ),
@@ -231,15 +213,9 @@ app.add_typer(identity_app, name="identity")
 
 @identity_app.command("generate")
 def identity_generate(
-    mailbox: str = typer.Argument(
-        ..., help="Mailbox name (e.g., alice)"
-    ),
-    identity_hostname: str = typer.Argument(
-        ..., help="Hostname (e.g., example.com)"
-    ),
-    blurb: str = typer.Option(
-        "", "--blurb", "-b", help="Human-readable description"
-    ),
+    mailbox: str = typer.Argument(..., help="Mailbox name (e.g., alice)"),
+    identity_hostname: str = typer.Argument(..., help="Hostname (e.g., example.com)"),
+    blurb: str = typer.Option("", "--blurb", "-b", help="Human-readable description"),
     output_dir: Path | None = typer.Option(
         None,
         "--output-dir",
@@ -252,9 +228,7 @@ def identity_generate(
     valid_days: int = typer.Option(
         365, "--valid-days", help="Certificate validity in days"
     ),
-    key_size: int = typer.Option(
-        2048, "--key-size", help="RSA key size in bits"
-    ),
+    key_size: int = typer.Option(2048, "--key-size", help="RSA key size in bits"),
 ) -> None:
     """Generate a Misfin identity certificate."""
     import os
@@ -288,13 +262,9 @@ def identity_generate(
         identity = extract_identity(cert)
         from tlacacoca import get_certificate_fingerprint
 
-        fp = normalize_fingerprint(
-            get_certificate_fingerprint(cert)
-        )
+        fp = normalize_fingerprint(get_certificate_fingerprint(cert))
 
-        console.print(
-            "\n[bold green]Identity certificate generated![/]\n"
-        )
+        console.print("\n[bold green]Identity certificate generated![/]\n")
 
         table = Table(show_header=False, box=None)
         table.add_column("Key", style="bold cyan")
@@ -334,9 +304,7 @@ def identity_info(
         cert = load_certificate(cert_file)
         identity = extract_identity(cert)
         info = get_certificate_info(cert)
-        fp = normalize_fingerprint(
-            get_certificate_fingerprint(cert)
-        )
+        fp = normalize_fingerprint(get_certificate_fingerprint(cert))
 
         table = Table(show_header=False, box=None)
         table.add_column("Key", style="bold cyan")
@@ -373,9 +341,7 @@ def tofu_list() -> None:
     hosts = db.list_hosts()
 
     if not hosts:
-        console.print(
-            "[yellow]No known hosts in TOFU database.[/]"
-        )
+        console.print("[yellow]No known hosts in TOFU database.[/]")
         return
 
     table = Table(title="Known Hosts (TOFU)")
@@ -399,9 +365,7 @@ def tofu_list() -> None:
 
 @tofu_app.command("revoke")
 def tofu_revoke(
-    tofu_hostname: str = typer.Argument(
-        ..., help="Hostname to revoke"
-    ),
+    tofu_hostname: str = typer.Argument(..., help="Hostname to revoke"),
     port: int | None = typer.Option(
         None,
         "--port",
@@ -417,14 +381,10 @@ def tofu_revoke(
 
     if db.revoke(tofu_hostname, effective_port):
         console.print(
-            f"[green]Revoked certificate for "
-            f"{tofu_hostname}:{effective_port}[/]"
+            f"[green]Revoked certificate for {tofu_hostname}:{effective_port}[/]"
         )
     else:
-        console.print(
-            f"[yellow]Host {tofu_hostname}:{effective_port} "
-            f"not in database[/]"
-        )
+        console.print(f"[yellow]Host {tofu_hostname}:{effective_port} not in database[/]")
 
 
 @app.command()

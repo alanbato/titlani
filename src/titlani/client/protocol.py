@@ -20,9 +20,7 @@ class MisfinClientProtocol(asyncio.Protocol):
         self.buffer = b""
         self.header_received = False
 
-    def connection_made(
-        self, transport: asyncio.BaseTransport
-    ) -> None:
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = transport  # type: ignore[assignment]
         if self.transport:
             self.transport.write(self.request_bytes)
@@ -35,9 +33,7 @@ class MisfinClientProtocol(asyncio.Protocol):
             self.header_received = True
 
             try:
-                response = MisfinResponse.from_line(
-                    header_line.decode("utf-8")
-                )
+                response = MisfinResponse.from_line(header_line.decode("utf-8"))
                 if not self.response_future.done():
                     self.response_future.set_result(response)
             except (ValueError, UnicodeDecodeError) as e:
@@ -67,9 +63,7 @@ class MisfinClientProtocol(asyncio.Protocol):
             return
         if not self.header_received:
             self.response_future.set_exception(
-                ConnectionError(
-                    "Connection closed before receiving response"
-                )
+                ConnectionError("Connection closed before receiving response")
             )
 
     def get_peer_certificate(self) -> x509.Certificate | None:

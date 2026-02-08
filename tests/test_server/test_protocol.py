@@ -11,9 +11,7 @@ def make_protocol(handler=None):
     """Create a protocol with a mock handler and transport."""
     if handler is None:
         handler = AsyncMock(
-            return_value=MisfinResponse(
-                status=StatusCode.SUCCESS, meta="fingerprint"
-            )
+            return_value=MisfinResponse(status=StatusCode.SUCCESS, meta="fingerprint")
         )
     protocol = MisfinServerProtocol(message_handler=handler)
     transport = MagicMock()
@@ -41,16 +39,12 @@ class TestMisfinServerProtocol:
 
     def test_parse_valid_header(self):
         handler = MagicMock(
-            return_value=MisfinResponse(
-                status=StatusCode.SUCCESS, meta="fp"
-            )
+            return_value=MisfinResponse(status=StatusCode.SUCCESS, meta="fp")
         )
         protocol, transport, _ = make_protocol(handler)
 
         # Send header + body for zero-length message
-        protocol.data_received(
-            b"misfin://alice@example.com\t0\r\n"
-        )
+        protocol.data_received(b"misfin://alice@example.com\t0\r\n")
 
         assert protocol.header_received is True
         assert protocol.request is not None
@@ -60,16 +54,12 @@ class TestMisfinServerProtocol:
 
     def test_two_phase_body_reception(self):
         handler = MagicMock(
-            return_value=MisfinResponse(
-                status=StatusCode.SUCCESS, meta="fp"
-            )
+            return_value=MisfinResponse(status=StatusCode.SUCCESS, meta="fp")
         )
         protocol, transport, _ = make_protocol(handler)
 
         # Phase 1: Header
-        protocol.data_received(
-            b"misfin://alice@example.com\t5\r\n"
-        )
+        protocol.data_received(b"misfin://alice@example.com\t5\r\n")
         assert protocol.header_received is True
         assert protocol.awaiting_body is True
 
@@ -84,16 +74,12 @@ class TestMisfinServerProtocol:
 
     def test_body_in_same_packet_as_header(self):
         handler = MagicMock(
-            return_value=MisfinResponse(
-                status=StatusCode.SUCCESS, meta="fp"
-            )
+            return_value=MisfinResponse(status=StatusCode.SUCCESS, meta="fp")
         )
         protocol, transport, _ = make_protocol(handler)
 
         # Send header + body in one packet
-        protocol.data_received(
-            b"misfin://alice@example.com\t5\r\nhello"
-        )
+        protocol.data_received(b"misfin://alice@example.com\t5\r\nhello")
         assert protocol.request.raw_message == b"hello"
 
     def test_invalid_header_sends_bad_request(self):

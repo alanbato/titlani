@@ -1,6 +1,7 @@
 """Message handlers for the Misfin server."""
 
 import abc
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,10 +13,7 @@ from ..protocol.status import StatusCode
 
 class MessageHandler(abc.ABC):
     @abc.abstractmethod
-    async def handle_message(
-        self, request: MisfinRequest
-    ) -> MisfinResponse:
-        ...
+    async def handle_message(self, request: MisfinRequest) -> MisfinResponse: ...
 
 
 class FileMailboxHandler(MessageHandler):
@@ -25,15 +23,13 @@ class FileMailboxHandler(MessageHandler):
         self,
         mailbox_dir: Path,
         hostname: str,
-        recipient_fingerprint_fn: "callable | None" = None,
+        recipient_fingerprint_fn: Callable[[str], str | None] | None = None,
     ) -> None:
         self.mailbox_dir = mailbox_dir
         self.hostname = hostname
         self.recipient_fingerprint_fn = recipient_fingerprint_fn
 
-    async def handle_message(
-        self, request: MisfinRequest
-    ) -> MisfinResponse:
+    async def handle_message(self, request: MisfinRequest) -> MisfinResponse:
         if request.hostname != self.hostname:
             return MisfinResponse(
                 status=StatusCode.DOMAIN_NOT_SERVICED,
@@ -57,9 +53,7 @@ class FileMailboxHandler(MessageHandler):
             )
 
         # Store message
-        timestamp = datetime.now(UTC).strftime(
-            "%Y%m%dT%H%M%SZ"
-        )
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         filename = f"{timestamp}.gemmail"
         filepath = mailbox_path / filename
         filepath.write_bytes(request.raw_message)

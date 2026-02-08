@@ -18,9 +18,7 @@ class TestMisfinIdentity:
         assert ident.address == "alice@example.com"
 
     def test_long_form_with_blurb(self):
-        ident = MisfinIdentity(
-            mailbox="alice", hostname="example.com", blurb="Alice"
-        )
+        ident = MisfinIdentity(mailbox="alice", hostname="example.com", blurb="Alice")
         assert ident.long_form == "Alice (alice@example.com)"
 
     def test_long_form_without_blurb(self):

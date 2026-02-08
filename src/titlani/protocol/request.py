@@ -27,17 +27,13 @@ class MisfinRequest:
     content_length: int
     raw_message: bytes = b""
     raw_header: bytes = b""
-    client_cert: x509.Certificate | None = field(
-        default=None, repr=False
-    )
+    client_cert: x509.Certificate | None = field(default=None, repr=False)
     client_cert_fingerprint: str | None = None
 
     @classmethod
     def from_header(cls, header_line: bytes) -> MisfinRequest:
         if len(header_line) > MAX_HEADER_SIZE:
-            raise ValueError(
-                f"Header exceeds maximum size ({MAX_HEADER_SIZE} bytes)"
-            )
+            raise ValueError(f"Header exceeds maximum size ({MAX_HEADER_SIZE} bytes)")
         try:
             header_str = header_line.decode("utf-8")
         except UnicodeDecodeError as e:
@@ -51,11 +47,9 @@ class MisfinRequest:
         # Validate scheme
         prefix = f"{MISFIN_SCHEME}://"
         if not uri_part.startswith(prefix):
-            raise ValueError(
-                f"Invalid scheme: expected {MISFIN_SCHEME}://"
-            )
+            raise ValueError(f"Invalid scheme: expected {MISFIN_SCHEME}://")
 
-        address = uri_part[len(prefix):]
+        address = uri_part[len(prefix) :]
         if "@" not in address:
             raise ValueError(f"Invalid address format: {address!r}")
 
@@ -66,14 +60,10 @@ class MisfinRequest:
         try:
             content_length = int(length_part.strip())
         except ValueError as e:
-            raise ValueError(
-                f"Invalid content length: {length_part!r}"
-            ) from e
+            raise ValueError(f"Invalid content length: {length_part!r}") from e
 
         if content_length < 0:
-            raise ValueError(
-                f"Content length must be non-negative: {content_length}"
-            )
+            raise ValueError(f"Content length must be non-negative: {content_length}")
         if content_length > MAX_CONTENT_LENGTH:
             raise ValueError(
                 f"Content length {content_length} exceeds maximum "
@@ -89,8 +79,7 @@ class MisfinRequest:
 
     def to_bytes(self) -> bytes:
         header = (
-            f"{MISFIN_SCHEME}://{self.mailbox}@{self.hostname}"
-            f"\t{self.content_length}\r\n"
+            f"{MISFIN_SCHEME}://{self.mailbox}@{self.hostname}\t{self.content_length}\r\n"
         )
         return header.encode("utf-8") + self.raw_message
 

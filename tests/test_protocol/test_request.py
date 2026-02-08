@@ -57,9 +57,7 @@ class TestMisfinRequestFromHeader:
     def test_exceeds_max_content_length(self):
         too_big = MAX_CONTENT_LENGTH + 1
         with pytest.raises(ValueError, match="exceeds maximum"):
-            MisfinRequest.from_header(
-                f"misfin://alice@example.com\t{too_big}".encode()
-            )
+            MisfinRequest.from_header(f"misfin://alice@example.com\t{too_big}".encode())
 
     def test_oversized_header(self):
         long_mailbox = "a" * 1000

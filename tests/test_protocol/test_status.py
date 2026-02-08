@@ -1,6 +1,5 @@
 """Tests for status codes."""
 
-
 from titlani.protocol.status import (
     StatusCode,
     interpret_status,

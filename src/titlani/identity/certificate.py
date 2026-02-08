@@ -70,8 +70,7 @@ def generate_identity_cert(
         .serial_number(x509.random_serial_number())
         .not_valid_before(datetime.datetime.now(datetime.UTC))
         .not_valid_after(
-            datetime.datetime.now(datetime.UTC)
-            + datetime.timedelta(days=valid_days)
+            datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=valid_days)
         )
         .add_extension(
             x509.SubjectAlternativeName([x509.DNSName(hostname)]),
@@ -123,9 +122,7 @@ def extract_identity(cert: x509.Certificate) -> MisfinIdentity:
     except x509.ExtensionNotFound:
         pass
 
-    return MisfinIdentity(
-        mailbox=mailbox, hostname=hostname, blurb=blurb
-    )
+    return MisfinIdentity(mailbox=mailbox, hostname=hostname, blurb=blurb)
 
 
 _ALGO_PREFIXES = ("sha256:", "sha1:", "sha512:", "md5:")
@@ -140,7 +137,7 @@ def normalize_fingerprint(fingerprint: str) -> str:
     lower = fingerprint.lower()
     for prefix in _ALGO_PREFIXES:
         if lower.startswith(prefix):
-            fingerprint = fingerprint[len(prefix):]
+            fingerprint = fingerprint[len(prefix) :]
             break
     # Remove non-hex characters and lowercase
     return re.sub(r"[^0-9a-fA-F]", "", fingerprint).lower()

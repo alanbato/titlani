@@ -19,9 +19,7 @@ from titlani.server.protocol import MisfinServerProtocol
 @pytest.fixture
 def server_certs(tmp_path: Path) -> tuple[Path, Path]:
     """Generate server TLS certificates."""
-    cert_pem, key_pem = generate_self_signed_cert(
-        "localhost", "Test Server"
-    )
+    cert_pem, key_pem = generate_self_signed_cert("localhost", "Test Server")
     cert_path = tmp_path / "server.pem"
     key_path = tmp_path / "server.key"
     cert_path.write_bytes(cert_pem)
@@ -83,9 +81,7 @@ def _build_message(
     """Build a MisfinRequest with a proper GemmailMessage."""
     from datetime import UTC, datetime
 
-    recipient = MisfinAddress(
-        mailbox=to_mailbox, hostname=to_hostname
-    )
+    recipient = MisfinAddress(mailbox=to_mailbox, hostname=to_hostname)
     full_body = ""
     if subject:
         full_body = f"# {subject}\n\n"
@@ -160,9 +156,7 @@ async def test_client_server_e2e(
 
         assert response.status == StatusCode.SUCCESS
 
-        files = list(
-            (mailbox_dir / "alice").glob("*.gemmail")
-        )
+        files = list((mailbox_dir / "alice").glob("*.gemmail"))
         assert len(files) == 1
 
         msg = GemmailMessage.from_bytes(files[0].read_bytes())

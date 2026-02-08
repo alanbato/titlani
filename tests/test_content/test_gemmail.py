@@ -44,9 +44,7 @@ class TestMisfinAddress:
         assert addr.address == "alice@example.com"
 
     def test_long_form_with_blurb(self):
-        addr = MisfinAddress(
-            mailbox="alice", hostname="example.com", blurb="Alice"
-        )
+        addr = MisfinAddress(mailbox="alice", hostname="example.com", blurb="Alice")
         assert addr.long_form == "Alice (alice@example.com)"
 
     def test_long_form_without_blurb(self):
@@ -54,9 +52,7 @@ class TestMisfinAddress:
         assert addr.long_form == "alice@example.com"
 
     def test_str_with_blurb(self):
-        addr = MisfinAddress(
-            mailbox="alice", hostname="example.com", blurb="Alice"
-        )
+        addr = MisfinAddress(mailbox="alice", hostname="example.com", blurb="Alice")
         assert str(addr) == "alice@example.com Alice"
 
     def test_str_without_blurb(self):
@@ -104,22 +100,12 @@ class TestGemmailMessage:
         assert msg.senders[1].mailbox == "original"
 
     def test_from_bytes_multiple_recipients(self):
-        data = (
-            b"sender@example.com\n"
-            b"alice@mail.com, bob@mail.com\n"
-            b"\n"
-            b"Body.\n"
-        )
+        data = b"sender@example.com\nalice@mail.com, bob@mail.com\n\nBody.\n"
         msg = GemmailMessage.from_bytes(data)
         assert len(msg.recipients) == 2
 
     def test_from_bytes_crlf_line_endings(self):
-        data = (
-            b"sender@example.com\r\n"
-            b"recipient@mail.com\r\n"
-            b"\r\n"
-            b"Body.\r\n"
-        )
+        data = b"sender@example.com\r\nrecipient@mail.com\r\n\r\nBody.\r\n"
         msg = GemmailMessage.from_bytes(data)
         assert len(msg.senders) == 1
 
@@ -142,12 +128,7 @@ class TestGemmailMessage:
             GemmailMessage.from_bytes(long_line)
 
     def test_subject_extraction(self):
-        data = (
-            b"\n\n\n"
-            b"# My Subject\n"
-            b"\n"
-            b"Body text.\n"
-        )
+        data = b"\n\n\n# My Subject\n\nBody text.\n"
         msg = GemmailMessage.from_bytes(data)
         assert msg.subject == "My Subject"
 
