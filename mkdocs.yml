@@ -1,0 +1,138 @@
+site_name: Titlani
+site_description: Misfin(C) mail protocol client and server library for Python
+site_url: https://titlani.readthedocs.io
+repo_name: alanbato/titlani
+repo_url: https://github.com/alanbato/titlani
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - navigation.expand
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            merge_init_into_class: true
+            show_signature_annotations: true
+            separate_signature: true
+            members_order: source
+  - git-revision-date-localized:
+      enable_creation_date: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+nav:
+  - Home:
+      - index.md
+      - Installation: installation.md
+      - Quick Start: quickstart.md
+      - Changelog: changelog.md
+  - Tutorials:
+      - tutorials/index.md
+      - Sending Your First Message: tutorials/sending-your-first-message.md
+      - Running a Mail Server: tutorials/running-a-mail-server.md
+      - Building a Mail Client: tutorials/building-a-mail-client.md
+  - How-To Guides:
+      - how-to/index.md
+      - Generate Identities: how-to/generate-identities.md
+      - Configure Server: how-to/configure-server.md
+      - Manage TOFU: how-to/manage-tofu.md
+      - Rate Limiting: how-to/rate-limiting.md
+      - Access Control: how-to/access-control.md
+      - Custom Message Handler: how-to/custom-message-handler.md
+      - Compose Gemmail: how-to/compose-gemmail.md
+  - Reference:
+      - reference/index.md
+      - CLI Commands: reference/cli.md
+      - Configuration: reference/configuration.md
+      - Status Codes: reference/status-codes.md
+      - API:
+          - reference/api/index.md
+          - Client: reference/api/client.md
+          - Server: reference/api/server.md
+          - Protocol: reference/api/protocol.md
+          - Content: reference/api/content.md
+          - Identity: reference/api/identity.md
+  - Explanation:
+      - explanation/index.md
+      - Misfin Protocol: explanation/misfin-protocol.md
+      - Architecture: explanation/architecture.md
+      - Security Model: explanation/security-model.md
+      - Tlacacoca Integration: explanation/tlacacoca-integration.md

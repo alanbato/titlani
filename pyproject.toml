@@ -34,6 +34,12 @@ dev = [
     "ruff>=0.11.12",
     "ty>=0.0.15",
 ]
+docs = [
+    "mkdocs-git-revision-date-localized-plugin>=1.5.0",
+    "mkdocs-material>=9.7.0",
+    "mkdocstrings[python]>=1.0.0",
+    "pymdown-extensions>=10.17.2",
+]
 
 [tool.ruff]
 target-version = "py313"
