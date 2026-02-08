@@ -1,6 +1,7 @@
 """Misfin server startup and lifecycle management."""
 
 import asyncio
+import os
 import tempfile
 from pathlib import Path
 
@@ -57,6 +58,7 @@ async def start_server(
         keyfile = Path(tmp_dir) / "server.key"
         certfile.write_bytes(cert_pem)
         keyfile.write_bytes(key_pem)
+        os.chmod(keyfile, 0o600)
         logger.info(
             "auto_generated_server_cert",
             hostname=config.hostname,
@@ -77,6 +79,7 @@ async def start_server(
         identity_keyfile = Path(tmp_dir) / "identity.key"
         identity_certfile.write_bytes(id_cert_pem)
         identity_keyfile.write_bytes(id_key_pem)
+        os.chmod(identity_keyfile, 0o600)
         logger.info(
             "auto_generated_identity_cert",
             hostname=config.hostname,
@@ -113,8 +116,9 @@ async def start_server(
 
     middleware = MiddlewareChain(middlewares) if middlewares else None
 
-    # Create mailbox directory
+    # Create mailbox directory with restrictive permissions
     config.mailbox_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(config.mailbox_dir, 0o700)
 
     # Compute identity certificate fingerprint for probe responses
     id_cert = load_pem_x509_certificate(identity_certfile.read_bytes())

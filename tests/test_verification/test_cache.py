@@ -1,5 +1,6 @@
 """Tests for SenderVerificationCache."""
 
+import stat
 from pathlib import Path
 
 from titlani.verification.cache import SenderVerificationCache
@@ -51,3 +52,10 @@ class TestSenderVerificationCache:
         cache2 = SenderVerificationCache(db_path)
         assert cache2.get_fingerprint("alice@example.com") == "abc123"
         cache2.close()
+
+    def test_db_file_has_600_permissions(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "secure.db"
+        cache = SenderVerificationCache(db_path)
+        mode = stat.S_IMODE(db_path.stat().st_mode)
+        assert mode == 0o600
+        cache.close()

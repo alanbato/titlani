@@ -1,5 +1,7 @@
 """Tests for ServerConfig."""
 
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -60,3 +62,12 @@ retry_after = 60
         config = ServerConfig.from_toml(toml_file)
         assert config.host == "localhost"
         assert config.port == DEFAULT_PORT
+
+
+class TestMailboxDirPermissions:
+    def test_mailbox_dir_created_with_700(self, tmp_path):
+        mailbox_dir = tmp_path / "mailboxes"
+        mailbox_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(mailbox_dir, 0o700)
+        mode = stat.S_IMODE(mailbox_dir.stat().st_mode)
+        assert mode == 0o700

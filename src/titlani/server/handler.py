@@ -1,6 +1,8 @@
 """Message handlers for the Misfin server."""
 
 import abc
+import os
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -45,7 +47,40 @@ class FileMailboxHandler(MessageHandler):
                 meta=self.identity_cert_fingerprint,
             )
 
-        mailbox_path = self.mailbox_dir / request.mailbox
+        # Sanitize mailbox name to prevent path traversal
+        mailbox = request.mailbox
+        if (
+            not mailbox
+            or "\x00" in mailbox
+            or "/" in mailbox
+            or "\\" in mailbox
+            or ".." in mailbox
+            or not re.fullmatch(r"[a-zA-Z0-9._-]+", mailbox)
+        ):
+            return MisfinResponse(
+                status=StatusCode.BAD_REQUEST,
+                meta="Invalid mailbox name",
+            )
+
+        mailbox_path = self.mailbox_dir / mailbox
+
+        # Verify resolved path is inside mailbox_dir (symlink-safe)
+        try:
+            resolved = mailbox_path.resolve(strict=False)
+            mailbox_dir_resolved = self.mailbox_dir.resolve(strict=False)
+            if not str(resolved).startswith(
+                str(mailbox_dir_resolved) + os.sep
+            ):
+                return MisfinResponse(
+                    status=StatusCode.BAD_REQUEST,
+                    meta="Invalid mailbox name",
+                )
+        except (OSError, ValueError):
+            return MisfinResponse(
+                status=StatusCode.BAD_REQUEST,
+                meta="Invalid mailbox name",
+            )
+
         if not mailbox_path.is_dir():
             return MisfinResponse(
                 status=StatusCode.MAILBOX_NOT_FOUND,
@@ -66,6 +101,7 @@ class FileMailboxHandler(MessageHandler):
         filename = f"{timestamp}.gemmail"
         filepath = mailbox_path / filename
         filepath.write_bytes(request.raw_message)
+        os.chmod(filepath, 0o600)
 
         # Get recipient fingerprint
         fingerprint = ""

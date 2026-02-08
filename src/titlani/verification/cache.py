@@ -1,5 +1,6 @@
 """Persistent cache for verified sender fingerprints."""
 
+import os
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +18,8 @@ class SenderVerificationCache:
         else:
             self._db_path = str(db_path)
         self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
+        if self._db_path != ":memory:":
+            os.chmod(self._db_path, 0o600)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute(
             """
