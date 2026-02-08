@@ -16,7 +16,7 @@ Technical reference for Titlani's CLI, configuration, protocol, and Python API.
 
     ---
 
-    TOML config file format: `[server]`, `[rate_limit]`, `[access_control]`.
+    TOML config file format: `[server]`, `[rate_limit]`, `[access_control]`, `[verification]`.
 
     [:octicons-arrow-right-24: Configuration](configuration.md)
 

@@ -116,6 +116,7 @@ nav:
       - Manage TOFU: how-to/manage-tofu.md
       - Rate Limiting: how-to/rate-limiting.md
       - Access Control: how-to/access-control.md
+      - Sender Verification: how-to/sender-verification.md
       - Custom Message Handler: how-to/custom-message-handler.md
       - Compose Gemmail: how-to/compose-gemmail.md
   - Reference:
@@ -127,6 +128,7 @@ nav:
           - reference/api/index.md
           - Client: reference/api/client.md
           - Server: reference/api/server.md
+          - Verification: reference/api/verification.md
           - Protocol: reference/api/protocol.md
           - Content: reference/api/content.md
           - Identity: reference/api/identity.md

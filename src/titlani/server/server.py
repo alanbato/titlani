@@ -4,6 +4,7 @@ import asyncio
 import tempfile
 from pathlib import Path
 
+from cryptography.x509 import load_pem_x509_certificate
 from tlacacoca import (
     AccessControl,
     AccessControlConfig,
@@ -13,10 +14,20 @@ from tlacacoca import (
     configure_logging,
     create_server_context,
     generate_self_signed_cert,
+    get_certificate_fingerprint,
     get_logger,
 )
 
-from ..identity.certificate import generate_identity_cert
+from ..identity.certificate import (
+    generate_identity_cert,
+    normalize_fingerprint,
+)
+from ..verification import (
+    ProbeVerifier,
+    SenderVerificationCache,
+    VerificationMode,
+    VerifyingHandler,
+)
 from .config import ServerConfig
 from .handler import FileMailboxHandler
 from .protocol import MisfinServerProtocol
@@ -105,11 +116,40 @@ async def start_server(
     # Create mailbox directory
     config.mailbox_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create handler
-    handler = FileMailboxHandler(
+    # Compute identity certificate fingerprint for probe responses
+    id_cert = load_pem_x509_certificate(identity_certfile.read_bytes())
+    id_fingerprint = normalize_fingerprint(get_certificate_fingerprint(id_cert))
+
+    # Create base handler
+    handler: FileMailboxHandler | VerifyingHandler = FileMailboxHandler(
         mailbox_dir=config.mailbox_dir,
         hostname=config.hostname,
+        identity_cert_fingerprint=id_fingerprint,
     )
+
+    # Wrap with verification if mode is not "off"
+    if config.verification_mode != "off":
+        cache_path = config.verification_cache_path
+        if cache_path is None:
+            cache_path = config.mailbox_dir / "verification_cache.db"
+        cache = SenderVerificationCache(cache_path)
+
+        verifier = ProbeVerifier(
+            cache=cache,
+            identity_cert=identity_certfile,
+            identity_key=identity_keyfile,
+            port=config.port,
+            timeout=config.verification_probe_timeout,
+        )
+        handler = VerifyingHandler(
+            wrapped=handler,
+            verifier=verifier,
+            mode=VerificationMode(config.verification_mode),
+        )
+        logger.info(
+            "sender_verification_enabled",
+            mode=config.verification_mode,
+        )
 
     # Start server
     loop = asyncio.get_running_loop()

@@ -65,6 +65,41 @@ The `normalize_fingerprint()` function handles this conversion at every boundary
 
 This function is called whenever fingerprints cross between tlacacoca and Misfin code paths (client certificate verification, TOFU storage, response meta field).
 
+## Sender Verification
+
+Because the server cannot request TLS client certificates (see above), sender identity in the gemmail metadata is self-reported. Sender verification adds a probe-based check: before accepting a message, the receiving server sends a zero-length request to the claimed sender's address and checks whether the sender's server acknowledges the mailbox.
+
+### What It Proves
+
+| Property | Verified? |
+|----------|-----------|
+| Sender's hostname has a running Misfin server | Yes |
+| Claimed mailbox exists on that server | Yes |
+| The connecting client owns that mailbox | **No** |
+| The message was not tampered with | **No** |
+
+Probe-based verification is an anti-forgery measure: it prevents a client from claiming to be `alice@example.com` if `example.com`'s server does not recognize that mailbox. It does **not** authenticate the sender — a different person could still send messages with a valid sender address.
+
+### Verification Modes
+
+- **Off** (default) — No verification. Matches the behavior before this feature existed.
+- **Optional** — Probes are sent, but unverified messages are still delivered. Useful for monitoring.
+- **Required** — Unverified messages are rejected with status **61** (unauthorized sender).
+
+### Verification Cache
+
+Results are cached in a SQLite database keyed by sender address. Once a sender is verified, subsequent messages from the same address skip the probe. The cache does not currently expire entries — revocation must be done manually.
+
+### Security Considerations
+
+- **Amplification attacks** — A malicious client could forge sender addresses from victim servers, causing the receiving server to probe the victim. Rate limiting mitigates this.
+- **Mailbox enumeration** — Verification probes reveal whether a mailbox exists on a server. This is inherent to the design.
+- **No replay protection** — A cached verification result does not prevent replayed or spoofed messages from a valid sender address.
+
+For stronger sender authentication, TLS client certificates would need to be re-enabled (pending a solution to the OpenSSL 3.x issue described above).
+
+See [Sender Verification How-To](../how-to/sender-verification.md) for configuration details.
+
 ## DoS Protections
 
 The protocol includes built-in limits to prevent denial-of-service attacks:

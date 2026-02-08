@@ -1,6 +1,6 @@
 # Configuration
 
-The Titlani server is configured via a TOML file with three sections.
+The Titlani server is configured via a TOML file with four sections.
 
 ## `[server]`
 
@@ -45,6 +45,16 @@ IP-based access control.
 
 Allow list takes priority over deny list.
 
+## `[verification]`
+
+Probe-based sender verification. See [Sender Verification](../how-to/sender-verification.md) for details.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mode` | string | `"off"` | Verification mode: `"off"`, `"optional"`, or `"required"` |
+| `cache_path` | string | `<mailbox_dir>/verification_cache.db` | Path to SQLite verification cache |
+| `probe_timeout` | float | `10.0` | Timeout in seconds for verification probes |
+
 ## Full Example
 
 ```toml
@@ -69,6 +79,10 @@ enable = true
 allow_list = ["192.168.0.0/16"]
 deny_list = ["10.0.0.99"]
 default_allow = false
+
+[verification]
+mode = "optional"
+probe_timeout = 5.0
 ```
 
 ## Validation
@@ -78,3 +92,4 @@ default_allow = false
 - Port is between 1 and 65535
 - Certificate files exist if specified
 - Key files exist if specified
+- Verification mode is one of `"off"`, `"optional"`, or `"required"`

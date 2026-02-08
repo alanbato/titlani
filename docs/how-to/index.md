@@ -44,6 +44,14 @@ Practical recipes for common tasks. Each guide focuses on a single goal and assu
 
     [:octicons-arrow-right-24: Guide](access-control.md)
 
+-   :material-account-check:{ .lg .middle } **Sender Verification**
+
+    ---
+
+    Verify that senders actually exist on their claimed server.
+
+    [:octicons-arrow-right-24: Guide](sender-verification.md)
+
 -   :material-puzzle:{ .lg .middle } **Custom Message Handler**
 
     ---

@@ -30,6 +30,11 @@ class ServerConfig:
     access_control_deny_list: list[str] = field(default_factory=list)
     access_control_default_allow: bool = True
 
+    # Sender verification ("off" | "optional" | "required")
+    verification_mode: str = "off"
+    verification_cache_path: Path | None = None
+    verification_probe_timeout: float = 10.0
+
     @classmethod
     def from_toml(cls, path: Path) -> "ServerConfig":
         with open(path, "rb") as f:
@@ -65,6 +70,12 @@ class ServerConfig:
         config.access_control_deny_list = access_control.get("deny_list", [])
         config.access_control_default_allow = access_control.get("default_allow", True)
 
+        verification = data.get("verification", {})
+        config.verification_mode = verification.get("mode", "off")
+        if "cache_path" in verification:
+            config.verification_cache_path = Path(verification["cache_path"])
+        config.verification_probe_timeout = float(verification.get("probe_timeout", 10.0))
+
         return config
 
     def validate(self) -> None:
@@ -74,3 +85,5 @@ class ServerConfig:
             raise ValueError(f"Key file not found: {self.keyfile}")
         if self.port < 1 or self.port > 65535:
             raise ValueError(f"Invalid port: {self.port}")
+        if self.verification_mode not in ("off", "optional", "required"):
+            raise ValueError(f"Invalid verification mode: {self.verification_mode!r}")
