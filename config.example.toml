@@ -19,3 +19,13 @@ enable = false
 allow_list = []
 deny_list = []
 default_allow = true
+
+[encryption]
+# Enable at-rest encryption for stored messages.
+# Each mailbox needs an X25519 keypair: <mailbox>.enc.key / <mailbox>.enc.pub
+# Generate with: titlani identity generate <mailbox> <hostname> --with-encryption-key
+# The server loads only public keys (.enc.pub) for encryption.
+# Private keys (.enc.key) stay user-owned for CLI decryption.
+# Mailboxes without key files store messages as plaintext.
+enable = false
+# key_dir = "keys"  # Directory containing .enc.pub files (default: mailbox_dir)

@@ -1,0 +1,37 @@
+# Titlani server configuration for systemd deployment
+# Copy to /etc/titlani/config.toml
+
+[server]
+host = "0.0.0.0"
+port = 1958
+hostname = "mail.example.com"
+mailbox_dir = "/var/lib/titlani/mailboxes"
+certfile = "/etc/titlani/server.pem"
+keyfile = "/etc/titlani/server.key"
+identity_certfile = "/etc/titlani/identity.pem"
+identity_keyfile = "/etc/titlani/identity.key"
+
+[rate_limit]
+enable = true
+capacity = 10.0
+refill_rate = 1.0
+retry_after = 30
+
+[access_control]
+enable = false
+allow_list = []
+deny_list = []
+default_allow = true
+
+[verification]
+mode = "optional"
+cache_path = "/var/lib/titlani/verification_cache.db"
+probe_timeout = 10.0
+
+[encryption]
+# Enable at-rest encryption for stored messages.
+# Place X25519 public key files (<mailbox>.enc.pub) in key_dir.
+# Private keys (.enc.key) stay user-owned (0600) for CLI decryption.
+# Generate with: titlani identity generate <mailbox> <hostname> --with-encryption-key
+enable = false
+# key_dir = "/etc/titlani/keys"

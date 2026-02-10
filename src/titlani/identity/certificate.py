@@ -14,6 +14,7 @@ from typing import cast
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from cryptography.x509.oid import NameOID
 
 
@@ -87,6 +88,27 @@ def generate_identity_cert(
     )
 
     return cert_pem, key_pem
+
+
+def generate_encryption_keypair() -> tuple[bytes, bytes]:
+    """Generate an X25519 keypair for at-rest mailbox encryption.
+
+    Returns:
+        Tuple of (public_key_pem, private_key_pem) as bytes.
+    """
+    private_key = X25519PrivateKey.generate()
+
+    public_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+    return public_pem, private_pem
 
 
 def extract_identity(cert: x509.Certificate) -> MisfinIdentity:

@@ -1,4 +1,4 @@
-"""Titlani - Misfin(C) mail protocol client and server library."""
+"""Titlani - Misfin(B/C) mail protocol client and server library."""
 
 # Protocol
 # Client
@@ -7,10 +7,14 @@ from .client.session import MisfinClient
 # Content
 from .content.gemmail import GemmailMessage, MisfinAddress
 
+# Encryption
+from .encryption.manager import EncryptionManager
+
 # Identity
 from .identity.certificate import (
     MisfinIdentity,
     extract_identity,
+    generate_encryption_keypair,
     generate_identity_cert,
     normalize_fingerprint,
 )
@@ -36,10 +40,13 @@ __all__ = [
     # Identity
     "MisfinIdentity",
     "extract_identity",
+    "generate_encryption_keypair",
     "generate_identity_cert",
     "normalize_fingerprint",
     # Client
     "MisfinClient",
+    # Encryption
+    "EncryptionManager",
     # Server
     "FileMailboxHandler",
     "MessageHandler",

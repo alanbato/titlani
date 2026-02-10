@@ -237,6 +237,11 @@ def identity_generate(
         365, "--valid-days", help="Certificate validity in days"
     ),
     key_size: int = typer.Option(2048, "--key-size", help="RSA key size in bits"),
+    with_encryption_key: bool = typer.Option(
+        False,
+        "--with-encryption-key",
+        help="Also generate an X25519 keypair for at-rest encryption",
+    ),
 ) -> None:
     """Generate a Misfin identity certificate."""
     import os
@@ -285,6 +290,18 @@ def identity_generate(
             key_file=key_file,
             title="Identity Certificate Generated",
         )
+
+        if with_encryption_key:
+            from .identity.certificate import generate_encryption_keypair
+
+            pub_pem, priv_pem = generate_encryption_keypair()
+            enc_key_file = output_dir / f"{mailbox}.enc.key"
+            enc_pub_file = output_dir / f"{mailbox}.enc.pub"
+            enc_key_file.write_bytes(priv_pem)
+            enc_pub_file.write_bytes(pub_pem)
+            os.chmod(enc_key_file, stat.S_IRUSR | stat.S_IWUSR)
+            console.print(f"[green]Encryption private key:[/] {enc_key_file}")
+            console.print(f"[green]Encryption public key:[/]  {enc_pub_file}")
 
     except Exception as e:
         error_console.print(f"Error generating certificate: {e}")
@@ -409,14 +426,26 @@ def mail_list(
         search_paths = sorted(p for p in mailbox_dir.iterdir() if p.is_dir())
 
     for mbox_path in search_paths:
-        for gemmail_file in sorted(mbox_path.glob("*.gemmail"), reverse=True):
-            try:
-                msg = GemmailMessage.from_bytes(gemmail_file.read_bytes())
-                messages.append((gemmail_file, msg))
-            except ValueError:
-                error_console.print(
-                    f"[yellow]Skipping invalid file: {gemmail_file.name}[/]"
-                )
+        # List both plaintext and encrypted messages
+        gemmail_files = sorted(mbox_path.glob("*.gemmail"), reverse=True)
+        enc_files = sorted(mbox_path.glob("*.gemmail.enc"), reverse=True)
+        all_files = sorted(
+            [*gemmail_files, *enc_files],
+            key=lambda p: p.name,
+            reverse=True,
+        )
+        for gemmail_file in all_files:
+            if gemmail_file.suffix == ".enc":
+                # Show encrypted indicator without decrypting
+                messages.append((gemmail_file, None))  # type: ignore[arg-type]
+            else:
+                try:
+                    msg = GemmailMessage.from_bytes(gemmail_file.read_bytes())
+                    messages.append((gemmail_file, msg))
+                except ValueError:
+                    error_console.print(
+                        f"[yellow]Skipping invalid file: {gemmail_file.name}[/]"
+                    )
 
     display_gemmail_list(messages, console)
 
@@ -425,7 +454,17 @@ def mail_list(
 def mail_read(
     gemmail_file: Path = typer.Argument(
         ...,
-        help="Path to .gemmail file",
+        help="Path to .gemmail or .gemmail.enc file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    encryption_key: Path | None = typer.Option(
+        None,
+        "--encryption-key",
+        "-e",
+        help="Path to X25519 private key for decryption",
         exists=True,
         file_okay=True,
         dir_okay=False,
@@ -434,11 +473,260 @@ def mail_read(
 ) -> None:
     """Read and display a gemmail message."""
     try:
-        msg = GemmailMessage.from_bytes(gemmail_file.read_bytes())
+        if gemmail_file.suffix == ".enc":
+            from .encryption.manager import EncryptionManager
+
+            key_path = encryption_key
+            if key_path is None:
+                # Auto-discover <mailbox>.enc.key from parent dir
+                mailbox_name = gemmail_file.parent.name
+                mailbox_dir = gemmail_file.parent.parent
+                key_path = mailbox_dir / f"{mailbox_name}.enc.key"
+                if not key_path.exists():
+                    error_console.print(
+                        f"No encryption key found at {key_path}\n"
+                        "Use --encryption-key / -e to specify the key path."
+                    )
+                    raise typer.Exit(code=1)
+
+            decrypted = EncryptionManager.decrypt_with_key(
+                key_path, gemmail_file.read_bytes()
+            )
+            msg = GemmailMessage.from_bytes(decrypted)
+        else:
+            msg = GemmailMessage.from_bytes(gemmail_file.read_bytes())
         display_gemmail_message(msg, console)
     except ValueError as e:
         error_console.print(f"Invalid gemmail format: {e}")
         raise typer.Exit(code=1) from e
+    except Exception as e:
+        error_console.print(f"Error reading message: {e}")
+        raise typer.Exit(code=1) from e
+
+
+@mail_app.command("delete")
+def mail_delete(
+    files: list[Path] = typer.Argument(
+        ...,
+        help="Paths to .gemmail or .gemmail.enc files to delete",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Skip confirmation prompt",
+    ),
+) -> None:
+    """Delete one or more stored messages."""
+    if not force:
+        file_list = "\n".join(f"  {f.name}" for f in files)
+        if not confirm_action(
+            f"Delete {len(files)} message(s)?\n{file_list}",
+            console,
+        ):
+            console.print("[dim]Cancelled.[/]")
+            return
+
+    deleted = 0
+    for filepath in files:
+        try:
+            filepath.unlink()
+            deleted += 1
+        except OSError as e:
+            error_console.print(f"Error deleting {filepath.name}: {e}")
+
+    console.print(f"[green]Deleted {deleted} message(s).[/]")
+
+
+@mail_app.command("reply")
+def mail_reply(
+    gemmail_file: Path = typer.Argument(
+        ...,
+        help="Path to .gemmail or .gemmail.enc file to reply to",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    reply_message: str | None = typer.Option(
+        None,
+        "--message",
+        "-m",
+        help="Reply message body",
+    ),
+    quote: bool = typer.Option(
+        False,
+        "--quote",
+        "-q",
+        help="Quote the original message with > prefix",
+    ),
+    cert: Path | None = typer.Option(
+        None,
+        "--cert",
+        help="Path to sender identity certificate",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    key: Path | None = typer.Option(
+        None,
+        "--key",
+        help="Path to sender identity private key",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    encryption_key: Path | None = typer.Option(
+        None,
+        "--encryption-key",
+        "-e",
+        help="Path to X25519 private key for decryption",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    timeout: float = typer.Option(
+        30.0, "--timeout", "-t", help="Request timeout in seconds"
+    ),
+) -> None:
+    """Reply to a gemmail message."""
+    import os
+    import subprocess
+    import tempfile
+
+    if cert and not key:
+        error_console.print("Error: --key is required when --cert is provided")
+        raise typer.Exit(code=1)
+    if key and not cert:
+        error_console.print("Error: --cert is required when --key is provided")
+        raise typer.Exit(code=1)
+
+    # Read original message
+    try:
+        if gemmail_file.suffix == ".enc":
+            from .encryption.manager import EncryptionManager
+
+            key_path = encryption_key
+            if key_path is None:
+                mailbox_name = gemmail_file.parent.name
+                mailbox_dir = gemmail_file.parent.parent
+                key_path = mailbox_dir / f"{mailbox_name}.enc.key"
+                if not key_path.exists():
+                    error_console.print(
+                        f"No encryption key found at {key_path}\n"
+                        "Use --encryption-key / -e to specify the key path."
+                    )
+                    raise typer.Exit(code=1)
+
+            decrypted = EncryptionManager.decrypt_with_key(
+                key_path, gemmail_file.read_bytes()
+            )
+            original = GemmailMessage.from_bytes(decrypted)
+        else:
+            original = GemmailMessage.from_bytes(gemmail_file.read_bytes())
+    except Exception as e:
+        error_console.print(f"Error reading message: {e}")
+        raise typer.Exit(code=1) from e
+
+    # Extract reply-to address
+    if not original.senders:
+        error_console.print("Cannot reply: message has no sender address")
+        raise typer.Exit(code=1)
+
+    reply_to = original.senders[0]
+
+    # Determine subject
+    original_subject = original.subject or ""
+    if original_subject.startswith("Re: "):
+        reply_subject = original_subject
+    elif original_subject:
+        reply_subject = f"Re: {original_subject}"
+    else:
+        reply_subject = None
+
+    # Get reply body
+    if reply_message is None:
+        # Open $EDITOR
+        editor = os.environ.get("EDITOR", "vi")
+        initial_content = ""
+        if quote:
+            quoted = "\n".join(f"> {line}" for line in original.body.split("\n"))
+            initial_content = f"\n\n{quoted}"
+
+        with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", delete=False) as tf:
+            tf.write(initial_content)
+            tf_path = tf.name
+
+        try:
+            subprocess.run([editor, tf_path], check=True)
+            reply_body = Path(tf_path).read_text()
+        except subprocess.CalledProcessError as e:
+            error_console.print(f"Editor exited with error: {e}")
+            raise typer.Exit(code=1) from e
+        finally:
+            Path(tf_path).unlink(missing_ok=True)
+
+        if not reply_body.strip():
+            error_console.print("Empty reply, aborting.")
+            raise typer.Exit(code=1)
+    else:
+        reply_body = reply_message
+        if quote:
+            quoted = "\n".join(f"> {line}" for line in original.body.split("\n"))
+            reply_body = f"{reply_body}\n\n{quoted}"
+
+    # Build sender from cert
+    sender = None
+    if cert:
+        from tlacacoca import load_certificate
+
+        sender_cert = load_certificate(cert)
+        identity = extract_identity(sender_cert)
+        sender = MisfinAddress(
+            mailbox=identity.mailbox,
+            hostname=identity.hostname,
+            blurb=identity.blurb,
+        )
+
+    async def _reply() -> None:
+        try:
+            with console.status(
+                f"[bold blue]Replying to {reply_to.address}...",
+            ):
+                async with MisfinClient(
+                    timeout=timeout,
+                    client_cert=cert,
+                    client_key=key,
+                ) as client:
+                    response = await client.send(
+                        to=reply_to.address,
+                        body=reply_body,
+                        subject=reply_subject,
+                        sender=sender,
+                    )
+
+            format_status_response(response.status, response.meta, console)
+            if not is_success(response.status):
+                raise typer.Exit(code=1)
+
+        except ConnectionError as e:
+            error_console.print(f"Connection error: {e}")
+            raise typer.Exit(code=1) from e
+        except TimeoutError as e:
+            error_console.print(f"Timeout: {e}")
+            raise typer.Exit(code=1) from e
+        except Exception as e:
+            error_console.print(f"Error: {e}")
+            raise typer.Exit(code=1) from e
+
+    asyncio.run(_reply())
 
 
 # Verification command group

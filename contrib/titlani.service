@@ -1,0 +1,33 @@
+[Unit]
+Description=Titlani Misfin Mail Server
+Documentation=https://github.com/alanbato/titlani
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/titlani serve --config /etc/titlani/config.toml
+
+# State and configuration directories
+StateDirectory=titlani
+ConfigurationDirectory=titlani
+
+# Dynamic user for isolation
+DynamicUser=yes
+
+# Security hardening
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

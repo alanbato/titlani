@@ -19,6 +19,7 @@ from tlacacoca import (
     get_logger,
 )
 
+from ..encryption.manager import EncryptionManager
 from ..identity.certificate import (
     generate_identity_cert,
     normalize_fingerprint,
@@ -34,6 +35,33 @@ from .handler import FileMailboxHandler
 from .protocol import MisfinServerProtocol
 
 logger = get_logger(__name__)
+
+
+def _setup_encryption(
+    config: ServerConfig,
+) -> EncryptionManager | None:
+    if not config.encryption_enable:
+        return None
+
+    manager = EncryptionManager(config.mailbox_dir)
+    key_dir = config.encryption_key_dir or config.mailbox_dir
+
+    for entry in config.mailbox_dir.iterdir():
+        if entry.is_dir() and not entry.name.startswith("."):
+            pub_path = key_dir / f"{entry.name}.enc.pub"
+            if pub_path.exists():
+                manager.load_public_key_for_mailbox(entry.name, pub_path)
+                logger.info(
+                    "encryption_key_loaded",
+                    mailbox=entry.name,
+                )
+            else:
+                logger.warning(
+                    "encryption_no_key",
+                    mailbox=entry.name,
+                    key_path=str(pub_path),
+                )
+    return manager
 
 
 async def start_server(
@@ -124,11 +152,15 @@ async def start_server(
     id_cert = load_pem_x509_certificate(identity_certfile.read_bytes())
     id_fingerprint = normalize_fingerprint(get_certificate_fingerprint(id_cert))
 
+    # Set up encryption if enabled
+    encryption_manager = _setup_encryption(config)
+
     # Create base handler
     handler: FileMailboxHandler | VerifyingHandler = FileMailboxHandler(
         mailbox_dir=config.mailbox_dir,
         hostname=config.hostname,
         identity_cert_fingerprint=id_fingerprint,
+        encryption_manager=encryption_manager,
     )
 
     # Wrap with verification if mode is not "off"

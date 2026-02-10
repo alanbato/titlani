@@ -35,6 +35,10 @@ class ServerConfig:
     verification_cache_path: Path | None = None
     verification_probe_timeout: float = 10.0
 
+    # At-rest encryption
+    encryption_enable: bool = False
+    encryption_key_dir: Path | None = None
+
     @classmethod
     def from_toml(cls, path: Path) -> "ServerConfig":
         with open(path, "rb") as f:
@@ -75,6 +79,11 @@ class ServerConfig:
         if "cache_path" in verification:
             config.verification_cache_path = Path(verification["cache_path"])
         config.verification_probe_timeout = float(verification.get("probe_timeout", 10.0))
+
+        encryption = data.get("encryption", {})
+        config.encryption_enable = encryption.get("enable", False)
+        if "key_dir" in encryption:
+            config.encryption_key_dir = Path(encryption["key_dir"])
 
         return config
 
