@@ -6,11 +6,12 @@ from pathlib import Path
 from rich.console import Console
 
 from ..content.gemmail import GemmailMessage
+from ..server.config import default_mailbox_dir
 from .config import ClientConfig
 
 
 def resolve_mailbox_dir(explicit: Path | None, error_console: Console) -> Path:
-    """Resolve mailbox directory: explicit arg -> config file -> error."""
+    """Resolve mailbox directory: explicit arg -> config file -> default."""
     if explicit is not None:
         if not explicit.is_dir():
             error_console.print(f"Mailbox directory not found: {explicit}")
@@ -24,14 +25,12 @@ def resolve_mailbox_dir(explicit: Path | None, error_console: Console) -> Path:
             raise SystemExit(1)
         return config.mailbox_dir
 
-    error_console.print(
-        "No mailbox directory specified.\n"
-        "Either pass it as an argument:\n"
-        "  titlani mail list /var/mail/misfin\n"
-        "Or set it in ~/.config/titlani/config.toml:\n"
-        '  [mail]\n  mailbox_dir = "/var/mail/misfin"'
-    )
-    raise SystemExit(1)
+    default = default_mailbox_dir()
+    default.mkdir(parents=True, exist_ok=True)
+    user = os.environ.get("USER")
+    if user:
+        (default / user).mkdir(exist_ok=True)
+    return default
 
 
 def resolve_mailbox_name(explicit: str | None) -> str | None:

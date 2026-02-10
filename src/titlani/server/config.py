@@ -4,7 +4,13 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from platformdirs import user_data_path
+
 from ..protocol.constants import DEFAULT_PORT
+
+
+def default_mailbox_dir() -> Path:
+    return user_data_path("titlani") / "mail"
 
 
 @dataclass
@@ -14,7 +20,7 @@ class ServerConfig:
     hostname: str = "localhost"
     certfile: Path | None = None
     keyfile: Path | None = None
-    mailbox_dir: Path = field(default_factory=lambda: Path("mailboxes"))
+    mailbox_dir: Path = field(default_factory=default_mailbox_dir)
     identity_certfile: Path | None = None
     identity_keyfile: Path | None = None
 
@@ -52,7 +58,7 @@ class ServerConfig:
             host=server.get("host", "localhost"),
             port=server.get("port", DEFAULT_PORT),
             hostname=server.get("hostname", "localhost"),
-            mailbox_dir=Path(server.get("mailbox_dir", "mailboxes")),
+            mailbox_dir=Path(server.get("mailbox_dir", str(default_mailbox_dir()))),
         )
 
         if "certfile" in server:

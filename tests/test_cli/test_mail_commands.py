@@ -200,6 +200,43 @@ class TestClientConfig:
         with pytest.raises(ValueError, match="mailbox_dir"):
             ClientConfig.from_toml(config_file)
 
+    def test_server_config_fallback(self, tmp_path):
+        server_toml = tmp_path / "server.toml"
+        server_toml.write_text(
+            '[server]\nmailbox_dir = "/srv/misfin/mail"\n'
+        )
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f'[mail]\nserver_config = "{server_toml}"\n'
+        )
+        config = ClientConfig.from_toml(config_file)
+        assert config.mailbox_dir == Path("/srv/misfin/mail")
+
+    def test_server_config_fallback_missing_key_raises(self, tmp_path):
+        import pytest
+
+        server_toml = tmp_path / "server.toml"
+        server_toml.write_text("[server]\nhost = \"localhost\"\n")
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f'[mail]\nserver_config = "{server_toml}"\n'
+        )
+        with pytest.raises(ValueError, match="mailbox_dir"):
+            ClientConfig.from_toml(config_file)
+
+    def test_explicit_mailbox_dir_overrides_server_config(self, tmp_path):
+        server_toml = tmp_path / "server.toml"
+        server_toml.write_text(
+            '[server]\nmailbox_dir = "/srv/misfin/mail"\n'
+        )
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f'[mail]\nmailbox_dir = "/my/mail"\n'
+            f'server_config = "{server_toml}"\n'
+        )
+        config = ClientConfig.from_toml(config_file)
+        assert config.mailbox_dir == Path("/my/mail")
+
 
 class TestMailListDefaults:
     def _setup_mailbox(self, tmp_path, mailbox="alice"):
@@ -264,11 +301,15 @@ class TestMailListDefaults:
         assert " 1 " in result.output
         assert " 2 " in result.output
 
-    def test_no_dir_no_config_shows_error(self, tmp_path, monkeypatch):
+    def test_no_dir_no_config_uses_default(self, tmp_path, monkeypatch):
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("USER", "testuser")
         result = runner.invoke(app, ["mail", "list"])
-        assert result.exit_code == 1
-        assert "mailbox directory" in result.output.lower()
+        assert result.exit_code == 0
+        default_mail = tmp_path / "data" / "titlani" / "mail"
+        assert default_mail.is_dir()
+        assert (default_mail / "testuser").is_dir()
 
 
 class TestMailReadByIndex:

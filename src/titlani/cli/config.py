@@ -18,9 +18,27 @@ class ClientConfig:
 
         mail = data.get("mail", {})
         mailbox_dir = mail.get("mailbox_dir")
+
+        # Fall back to server config's mailbox_dir
         if mailbox_dir is None:
-            raise ValueError("Missing required key: [mail] mailbox_dir")
+            server_config = mail.get("server_config")
+            if server_config:
+                mailbox_dir = cls._read_server_mailbox_dir(
+                    Path(server_config)
+                )
+
+        if mailbox_dir is None:
+            raise ValueError(
+                "Missing required key: [mail] mailbox_dir "
+                "(or server_config pointing to server TOML)"
+            )
         return cls(mailbox_dir=Path(mailbox_dir))
+
+    @staticmethod
+    def _read_server_mailbox_dir(path: Path) -> str | None:
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+        return data.get("server", {}).get("mailbox_dir")
 
     @classmethod
     def load(cls) -> "ClientConfig | None":
