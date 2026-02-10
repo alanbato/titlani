@@ -12,6 +12,12 @@ wheels/
 # Test artifacts
 .hypothesis/
 
+# Local development files
+*.key
+*.pem
+mailboxes/
+server-certs/
+
 # MkDocs build output
 site/
 MISFIN_B.gmi
