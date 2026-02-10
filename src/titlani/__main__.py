@@ -110,6 +110,8 @@ def send(
             if not is_success(response.status):
                 raise typer.Exit(code=1)
 
+        except typer.Exit:
+            raise
         except ConnectionError as e:
             error_console.print(f"Connection error: {e}")
             raise typer.Exit(code=1) from e
@@ -753,6 +755,8 @@ def mail_reply(
             if not is_success(response.status):
                 raise typer.Exit(code=1)
 
+        except typer.Exit:
+            raise
         except ConnectionError as e:
             error_console.print(f"Connection error: {e}")
             raise typer.Exit(code=1) from e
