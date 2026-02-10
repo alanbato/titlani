@@ -1,6 +1,7 @@
 """High-level Misfin client API with TOFU support."""
 
 import asyncio
+import re
 import ssl
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,8 +17,10 @@ from ..content.gemmail import GemmailMessage, MisfinAddress
 from ..protocol.constants import DEFAULT_PORT, REQUEST_TIMEOUT
 from ..protocol.request import MisfinRequest
 from ..protocol.response import MisfinResponse
-from ..protocol.status import is_redirect
+from ..protocol.status import StatusCode, is_redirect
 from .protocol import MisfinClientProtocol
+
+_RETRY_DELAY_RE = re.compile(r"(\d+)\s*s")
 
 
 class MisfinClient:
@@ -30,10 +33,16 @@ class MisfinClient:
         tofu_db_path: Path | None = None,
         client_cert: Path | str | None = None,
         client_key: Path | str | None = None,
+        max_retries: int = 3,
+        retry_base_delay: float = 1.0,
+        misfin_b_fallback: bool = True,
     ) -> None:
         self.timeout = timeout
         self.port = port
         self.trust_on_first_use = trust_on_first_use
+        self.max_retries = max_retries
+        self.retry_base_delay = retry_base_delay
+        self.misfin_b_fallback = misfin_b_fallback
 
         if client_cert and not client_key:
             raise ValueError("client_key is required when client_cert is provided")
@@ -123,7 +132,88 @@ class MisfinClient:
 
         return await self._send_request(request, hostname)
 
+    _B_FALLBACK_STATUSES = {
+        StatusCode.BAD_REQUEST,
+        StatusCode.TEMPORARY_FAILURE,
+        StatusCode.CERTIFICATE_REQUIRED,
+    }
+
     async def _send_request(
+        self, request: MisfinRequest, hostname: str
+    ) -> MisfinResponse:
+        response = await self._send_request_once(request, hostname)
+
+        retries = 0
+        while response.status == StatusCode.SLOW_DOWN and retries < self.max_retries:
+            delay = self._parse_retry_delay(response.meta)
+            await asyncio.sleep(delay)
+            response = await self._send_request_once(request, hostname)
+            retries += 1
+
+        # Misfin(B) fallback
+        if (
+            self.misfin_b_fallback
+            and request.protocol_version == "C"
+            and response.status in self._B_FALLBACK_STATUSES
+        ):
+            return await self._send_request_b(request, hostname)
+
+        return response
+
+    async def _send_request_b(
+        self, request: MisfinRequest, hostname: str
+    ) -> MisfinResponse:
+        try:
+            b_bytes = request.to_bytes_b()
+        except ValueError:
+            # Message too large for B format, return original response
+            return MisfinResponse(
+                status=StatusCode.BAD_REQUEST,
+                meta="Message too large for Misfin(B) format",
+            )
+
+        loop = asyncio.get_running_loop()
+        response_future: asyncio.Future = loop.create_future()
+        protocol = MisfinClientProtocol(b_bytes, response_future)
+
+        try:
+            transport, protocol = await asyncio.wait_for(
+                loop.create_connection(
+                    lambda: protocol,
+                    host=hostname,
+                    port=self.port,
+                    ssl=self.ssl_context,
+                    server_hostname=hostname,
+                ),
+                timeout=self.timeout,
+            )
+        except (TimeoutError, OSError):
+            return MisfinResponse(
+                status=StatusCode.TEMPORARY_FAILURE,
+                meta="Misfin(B) fallback connection failed",
+            )
+
+        try:
+            response: MisfinResponse = await asyncio.wait_for(
+                response_future, timeout=self.timeout
+            )
+            return response
+        except TimeoutError:
+            return MisfinResponse(
+                status=StatusCode.TEMPORARY_FAILURE,
+                meta="Misfin(B) fallback timed out",
+            )
+        finally:
+            transport.close()
+
+    @staticmethod
+    def _parse_retry_delay(meta: str) -> float:
+        match = _RETRY_DELAY_RE.search(meta)
+        if match:
+            return float(match.group(1))
+        return 1.0
+
+    async def _send_request_once(
         self, request: MisfinRequest, hostname: str
     ) -> MisfinResponse:
         loop = asyncio.get_running_loop()

@@ -11,12 +11,7 @@ from titlani.server.handler import FileMailboxHandler
 
 def _make_valid_message() -> bytes:
     """Return a minimal valid gemmail message body."""
-    return (
-        b"alice@sender.example\n"
-        b"bob@example.com\n"
-        b"2025-01-01T00:00:00Z\n"
-        b"Hello!\n"
-    )
+    return b"alice@sender.example\nbob@example.com\n2025-01-01T00:00:00Z\nHello!\n"
 
 
 def _make_request(

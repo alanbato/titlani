@@ -7,6 +7,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ..content.gemmail import GemmailMessage, MisfinAddress
+from ..encryption.manager import EncryptionManager
 from ..identity.certificate import normalize_fingerprint
 from ..protocol.request import MisfinRequest
 from ..protocol.response import MisfinResponse
@@ -27,11 +29,13 @@ class FileMailboxHandler(MessageHandler):
         hostname: str,
         recipient_fingerprint_fn: Callable[[str], str | None] | None = None,
         identity_cert_fingerprint: str = "",
+        encryption_manager: EncryptionManager | None = None,
     ) -> None:
         self.mailbox_dir = mailbox_dir
         self.hostname = hostname
         self.recipient_fingerprint_fn = recipient_fingerprint_fn
         self.identity_cert_fingerprint = identity_cert_fingerprint
+        self.encryption_manager = encryption_manager
 
     async def handle_message(self, request: MisfinRequest) -> MisfinResponse:
         if request.hostname != self.hostname:
@@ -68,9 +72,7 @@ class FileMailboxHandler(MessageHandler):
         try:
             resolved = mailbox_path.resolve(strict=False)
             mailbox_dir_resolved = self.mailbox_dir.resolve(strict=False)
-            if not str(resolved).startswith(
-                str(mailbox_dir_resolved) + os.sep
-            ):
+            if not str(resolved).startswith(str(mailbox_dir_resolved) + os.sep):
                 return MisfinResponse(
                     status=StatusCode.BAD_REQUEST,
                     meta="Invalid mailbox name",
@@ -87,21 +89,15 @@ class FileMailboxHandler(MessageHandler):
                 meta="Mailbox does not exist",
             )
 
-        # Validate message format
-        try:
-            request.parse_message()
-        except ValueError:
+        # Validate and prepare message for storage
+        message_bytes = self._prepare_message(request)
+        if message_bytes is None:
             return MisfinResponse(
                 status=StatusCode.BAD_REQUEST,
                 meta="Invalid message format",
             )
 
-        # Store message
-        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        filename = f"{timestamp}.gemmail"
-        filepath = mailbox_path / filename
-        filepath.write_bytes(request.raw_message)
-        os.chmod(filepath, 0o600)
+        self._store_message(mailbox, mailbox_path, message_bytes)
 
         # Get recipient fingerprint
         fingerprint = ""
@@ -114,3 +110,39 @@ class FileMailboxHandler(MessageHandler):
             status=StatusCode.SUCCESS,
             meta=fingerprint,
         )
+
+    def _prepare_message(self, request: MisfinRequest) -> bytes | None:
+        if request.protocol_version == "B":
+            body_text = request.raw_message.decode("utf-8")
+            if not body_text.endswith("\n"):
+                body_text += "\n"
+            recipient = MisfinAddress(
+                mailbox=request.mailbox,
+                hostname=request.hostname,
+            )
+            envelope = GemmailMessage(
+                senders=[],
+                recipients=[recipient],
+                timestamps=[datetime.now(UTC)],
+                body=body_text,
+            )
+            return envelope.to_bytes()
+
+        try:
+            request.parse_message()
+        except ValueError:
+            return None
+        return request.raw_message
+
+    def _store_message(self, mailbox: str, mailbox_path: Path, data: bytes) -> None:
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        if self.encryption_manager and self.encryption_manager.has_key(mailbox):
+            filename = f"{timestamp}.gemmail.enc"
+            filepath = mailbox_path / filename
+            encrypted = self.encryption_manager.encrypt(mailbox, data)
+            filepath.write_bytes(encrypted)
+        else:
+            filename = f"{timestamp}.gemmail"
+            filepath = mailbox_path / filename
+            filepath.write_bytes(data)
+        os.chmod(filepath, 0o600)

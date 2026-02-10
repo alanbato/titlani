@@ -30,8 +30,8 @@ class TestMisfinServerProtocol:
 
     def test_header_too_long(self):
         protocol, transport, _ = make_protocol()
-        # Send data larger than MAX_HEADER_SIZE without CRLF
-        protocol.data_received(b"x" * 1025)
+        # Send data larger than DoS limit (max of C and B sizes) without CRLF
+        protocol.data_received(b"x" * 2049)
         # Should send error response
         transport.write.assert_called_once()
         written = transport.write.call_args[0][0]

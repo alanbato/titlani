@@ -19,7 +19,12 @@ from tlacacoca import (
 )
 
 from ..identity.certificate import normalize_fingerprint
-from ..protocol.constants import CRLF, MAX_HEADER_SIZE, REQUEST_TIMEOUT
+from ..protocol.constants import (
+    CRLF,
+    MAX_B_REQUEST_SIZE,
+    MAX_HEADER_SIZE,
+    REQUEST_TIMEOUT,
+)
 from ..protocol.request import MisfinRequest
 from ..protocol.response import MisfinResponse
 from ..protocol.status import StatusCode
@@ -92,11 +97,12 @@ class MisfinServerProtocol(asyncio.Protocol):
 
     def _receive_header(self) -> None:
         """Phase 1: Accumulate until CRLF, parse header."""
-        # DoS protection
-        if len(self.buffer) > MAX_HEADER_SIZE and CRLF not in self.buffer:
+        # DoS protection: use max of C and B sizes
+        dos_limit = max(MAX_HEADER_SIZE, MAX_B_REQUEST_SIZE)
+        if len(self.buffer) > dos_limit and CRLF not in self.buffer:
             self._send_error(
                 StatusCode.BAD_REQUEST,
-                f"Header exceeds maximum size ({MAX_HEADER_SIZE} bytes)",
+                f"Header exceeds maximum size ({dos_limit} bytes)",
             )
             return
 
@@ -104,22 +110,25 @@ class MisfinServerProtocol(asyncio.Protocol):
             return
 
         header_line, remaining = self.buffer.split(CRLF, 1)
-
-        if len(header_line) + len(CRLF) > MAX_HEADER_SIZE:
-            self._send_error(
-                StatusCode.BAD_REQUEST,
-                f"Header exceeds maximum size ({MAX_HEADER_SIZE} bytes)",
-            )
-            return
-
         self.buffer = remaining
         self.header_received = True
 
         try:
             self.request = MisfinRequest.from_header(header_line)
-        except ValueError as e:
-            self._send_error(StatusCode.BAD_REQUEST, str(e))
-            return
+        except ValueError:
+            # If no TAB in header, try Misfin(B) format
+            if b"\t" not in header_line:
+                try:
+                    self.request = MisfinRequest.from_header_b(header_line)
+                except ValueError as e2:
+                    self._send_error(StatusCode.BAD_REQUEST, str(e2))
+                    return
+            else:
+                self._send_error(
+                    StatusCode.BAD_REQUEST,
+                    "Invalid request header",
+                )
+                return
 
         # Attach client cert info
         client_cert = self._get_peer_certificate()
@@ -128,7 +137,8 @@ class MisfinServerProtocol(asyncio.Protocol):
             raw_fp = get_certificate_fingerprint(client_cert)
             self.request.client_cert_fingerprint = normalize_fingerprint(raw_fp)
 
-        if self.request.content_length == 0:
+        # B requests have no body phase
+        if self.request.protocol_version == "B" or self.request.content_length == 0:
             self._cancel_timeout()
             self._process_request()
             return

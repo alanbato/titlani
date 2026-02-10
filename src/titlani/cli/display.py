@@ -271,7 +271,7 @@ def display_gemmail_message(msg: GemmailMessage, console: Console) -> None:
 
 
 def display_gemmail_list(
-    messages: list[tuple[Path, GemmailMessage]],
+    messages: list[tuple[Path, GemmailMessage | None]],
     console: Console,
 ) -> None:
     """Display a table of gemmail messages."""
@@ -287,14 +287,22 @@ def display_gemmail_list(
     for filepath, msg in messages:
         # Parse timestamp from filename (e.g. 20260208T194757Z)
         stem = filepath.stem
+        # Strip .gemmail from .gemmail.enc files
+        if stem.endswith(".gemmail"):
+            stem = stem[: -len(".gemmail")]
         try:
             dt = datetime.strptime(stem, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
             time_display = dt.strftime("%Y-%m-%d %H:%M")
         except ValueError:
             time_display = stem
 
-        sender = msg.senders[0].long_form if msg.senders else "[dim]anonymous[/]"
-        subject = msg.subject or "[dim]no subject[/]"
+        if msg is None:
+            # Encrypted message
+            sender = "[dim]encrypted[/]"
+            subject = "[yellow][ENC][/]"
+        else:
+            sender = msg.senders[0].long_form if msg.senders else "[dim]anonymous[/]"
+            subject = msg.subject or "[dim]no subject[/]"
         table.add_row(time_display, sender, subject)
 
     console.print(table)
