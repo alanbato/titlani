@@ -427,13 +427,13 @@ def mail_read(
         None,
         "--mailbox-dir",
         "-d",
-        help="Mailbox directory (for index resolution)",
+        help="Mailbox directory",
     ),
     mailbox: str | None = typer.Option(
         None,
         "--mailbox",
         "-m",
-        help="Mailbox name (for index resolution, defaults to $USER)",
+        help="Mailbox name (defaults to $USER)",
     ),
     encryption_key: Path | None = typer.Option(
         None,
@@ -503,13 +503,21 @@ def mail_read(
 
 @mail_app.command("delete")
 def mail_delete(
-    files: list[Path] = typer.Argument(
+    messages: list[str] = typer.Argument(
         ...,
-        help="Paths to .gemmail or .gemmail.enc files to delete",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        resolve_path=True,
+        help="Message indices (from 'mail list') or paths to .gemmail files",
+    ),
+    mailbox_dir: Path | None = typer.Option(
+        None,
+        "--mailbox-dir",
+        "-d",
+        help="Mailbox directory",
+    ),
+    mailbox: str | None = typer.Option(
+        None,
+        "--mailbox",
+        "-m",
+        help="Mailbox name (defaults to $USER)",
     ),
     force: bool = typer.Option(
         False,
@@ -519,17 +527,49 @@ def mail_delete(
     ),
 ) -> None:
     """Delete one or more stored messages."""
+    # Resolve message arguments: indices or file paths
+    resolved_files: list[Path] = []
+    cached_messages = None
+    for msg in messages:
+        try:
+            index = int(msg)
+        except ValueError:
+            index = None
+
+        if index is not None:
+            if cached_messages is None:
+                resolved_dir = resolve_mailbox_dir(
+                    mailbox_dir, error_console
+                )
+                resolved_mailbox = resolve_mailbox_name(mailbox)
+                cached_messages = list_messages(
+                    resolved_dir, resolved_mailbox, error_console
+                )
+            if index < 1 or index > len(cached_messages):
+                error_console.print(
+                    f"Invalid message index: {index} "
+                    f"(valid range: 1-{len(cached_messages)})"
+                )
+                raise typer.Exit(code=1)
+            resolved_files.append(cached_messages[index - 1][0])
+        else:
+            filepath = Path(msg).resolve()
+            if not filepath.exists():
+                error_console.print(f"File not found: {filepath}")
+                raise typer.Exit(code=1)
+            resolved_files.append(filepath)
+
     if not force:
-        file_list = "\n".join(f"  {f.name}" for f in files)
+        file_list = "\n".join(f"  {f.name}" for f in resolved_files)
         if not confirm_action(
-            f"Delete {len(files)} message(s)?\n{file_list}",
+            f"Delete {len(resolved_files)} message(s)?\n{file_list}",
             console,
         ):
             console.print("[dim]Cancelled.[/]")
             return
 
     deleted = 0
-    for filepath in files:
+    for filepath in resolved_files:
         try:
             filepath.unlink()
             deleted += 1

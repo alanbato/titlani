@@ -91,6 +91,52 @@ class TestMailDelete:
         assert result.exit_code == 0
         assert not gemmail.exists()
 
+    def test_delete_by_index(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        f1 = _create_gemmail(mbox / "20250110T153045Z.gemmail", subject="Old")
+        f2 = _create_gemmail(mbox / "20250111T100000Z.gemmail", subject="New")
+
+        result = runner.invoke(
+            app,
+            ["mail", "delete", "1", "-d", str(tmp_path), "-m", "alice", "-f"],
+        )
+        assert result.exit_code == 0
+        assert "Deleted 1" in result.output
+        # Index 1 = newest (reverse sort), so f2 should be deleted
+        assert not f2.exists()
+        assert f1.exists()
+
+    def test_delete_by_multiple_indices(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        f1 = _create_gemmail(mbox / "20250110T153045Z.gemmail", subject="Old")
+        f2 = _create_gemmail(mbox / "20250111T100000Z.gemmail", subject="New")
+
+        result = runner.invoke(
+            app,
+            [
+                "mail", "delete", "1", "2",
+                "-d", str(tmp_path), "-m", "alice", "-f",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Deleted 2" in result.output
+        assert not f1.exists()
+        assert not f2.exists()
+
+    def test_delete_by_invalid_index(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        _create_gemmail(mbox / "20250110T153045Z.gemmail")
+
+        result = runner.invoke(
+            app,
+            ["mail", "delete", "99", "-d", str(tmp_path), "-m", "alice", "-f"],
+        )
+        assert result.exit_code == 1
+        assert "Invalid message index" in result.output
+
 
 class TestMailReply:
     def test_reply_extracts_sender(self, tmp_path):
