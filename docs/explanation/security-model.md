@@ -25,7 +25,7 @@ Python's `ssl` module does not expose a custom verify callback, so there is no w
 - Sender information in the gemmail metadata is **self-reported** by the client
 - The server **can** still verify the server-to-client direction via TOFU
 
-This is a protocol-level limitation shared by Misfin implementations on modern TLS stacks, not specific to Titlani. Messages are also not encrypted at rest — intermediaries with access to the server's storage can read delivered messages, even though the transport is encrypted.
+This is a protocol-level limitation shared by Misfin implementations on modern TLS stacks, not specific to Titlani. Titlani offers optional [at-rest encryption](#at-rest-encryption) to protect stored messages on disk.
 
 ## Identity Certificates
 
@@ -99,6 +99,54 @@ Results are cached in a SQLite database keyed by sender address. Once a sender i
 For stronger sender authentication, TLS client certificates would need to be re-enabled (pending a solution to the OpenSSL 3.x issue described above).
 
 See [Sender Verification How-To](../how-to/sender-verification.md) for configuration details.
+
+## At-Rest Encryption
+
+Misfin's transport layer (mandatory TLS) protects messages in transit, but delivered messages are stored as plaintext `.gemmail` files by default. At-rest encryption protects stored messages so that only the mailbox owner's private key can decrypt them.
+
+### Cryptographic Scheme
+
+Titlani uses an ECIES-like construction:
+
+| Component | Algorithm | Purpose |
+|-----------|-----------|---------|
+| Key agreement | X25519 ECDH | Derive a shared secret between ephemeral and recipient keys |
+| Key derivation | HKDF-SHA256 | Derive a 256-bit symmetric key with domain separation |
+| Authenticated encryption | AES-256-GCM | Encrypt and integrity-protect the message |
+
+Each encryption generates a fresh ephemeral X25519 keypair. The shared secret is derived via ECDH between the ephemeral private key and the recipient's long-term public key, then fed through HKDF with the info string `titlani-mailbox-encryption` and no salt (the ephemeral key provides per-message uniqueness). The resulting 256-bit key encrypts the message via AES-256-GCM with a random 12-byte nonce.
+
+The wire format is: `[32B ephemeral public key][12B nonce][ciphertext + 16B GCM tag]`.
+
+### Key Separation Model
+
+The security model enforces a strict separation between the server (encrypt-only) and users (decrypt):
+
+- **Server process** loads only **public keys** (`.enc.pub`). It can encrypt incoming messages but cannot decrypt any stored mail.
+- **Each user** holds their own **private key** (`.enc.key`) with `0600` permissions. Only they can decrypt their mail via the CLI.
+
+This means a compromised server process cannot read previously stored encrypted messages. However, the server does see messages in plaintext briefly during receipt (before encrypting to disk) — at-rest encryption does not protect against a compromised server process reading messages as they arrive.
+
+### What At-Rest Encryption Protects Against
+
+| Threat | Protected? |
+|--------|------------|
+| Disk theft or unauthorized file access | Yes |
+| Backup exposure (unencrypted backups of mailbox storage) | Yes |
+| Compromised server reading stored mail | Yes |
+| Compromised server reading messages during receipt | **No** |
+| Tampered ciphertext (bit-flipping, truncation) | Yes (GCM tag verification fails) |
+| Key compromise of one mailbox affecting others | **No** (each mailbox has its own keypair) |
+
+### Why X25519 Instead of RSA or the Identity Certificate Key
+
+Misfin identity certificates use RSA keys for TLS. At-rest encryption uses a separate X25519 keypair because:
+
+1. **Key separation** — The identity key is used for TLS authentication; the encryption key is used for at-rest confidentiality. Compromising one does not compromise the other.
+2. **ECDH suitability** — X25519 is purpose-built for Diffie-Hellman key agreement, enabling the ECIES construction where each message uses a fresh ephemeral key. RSA encryption (OAEP) would work but limits message size and doesn't provide forward secrecy per message.
+3. **Performance** — X25519 operations are significantly faster than RSA operations, relevant when encrypting every incoming message.
+
+See [At-Rest Encryption How-To](../how-to/at-rest-encryption.md) for setup instructions.
 
 ## DoS Protections
 

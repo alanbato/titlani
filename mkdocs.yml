@@ -117,6 +117,7 @@ nav:
       - Rate Limiting: how-to/rate-limiting.md
       - Access Control: how-to/access-control.md
       - Sender Verification: how-to/sender-verification.md
+      - At-Rest Encryption: how-to/at-rest-encryption.md
       - Custom Message Handler: how-to/custom-message-handler.md
       - Compose Gemmail: how-to/compose-gemmail.md
   - Reference:
@@ -132,6 +133,7 @@ nav:
           - Protocol: reference/api/protocol.md
           - Content: reference/api/content.md
           - Identity: reference/api/identity.md
+          - Encryption: reference/api/encryption.md
   - Explanation:
       - explanation/index.md
       - Misfin Protocol: explanation/misfin-protocol.md

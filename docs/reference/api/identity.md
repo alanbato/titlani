@@ -21,6 +21,12 @@ Misfin identity certificate generation, extraction, and fingerprint normalizatio
     options:
       show_source: true
 
+## generate_encryption_keypair
+
+::: titlani.identity.certificate.generate_encryption_keypair
+    options:
+      show_source: true
+
 ## normalize_fingerprint
 
 ::: titlani.identity.certificate.normalize_fingerprint

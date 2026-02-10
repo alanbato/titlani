@@ -1,6 +1,6 @@
 # Configuration
 
-The Titlani server is configured via a TOML file with four sections.
+The Titlani server is configured via a TOML file with five sections.
 
 ## `[server]`
 
@@ -55,6 +55,20 @@ Probe-based sender verification. See [Sender Verification](../how-to/sender-veri
 | `cache_path` | string | `<mailbox_dir>/verification_cache.db` | Path to SQLite verification cache |
 | `probe_timeout` | float | `10.0` | Timeout in seconds for verification probes |
 
+## `[encryption]`
+
+At-rest encryption for stored messages. See [At-Rest Encryption](../how-to/at-rest-encryption.md) for setup details.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enable` | bool | `false` | Enable at-rest encryption |
+| `key_dir` | string | `<mailbox_dir>` | Directory containing `<mailbox>.enc.pub` public key files |
+
+When enabled, the server scans for `<mailbox>.enc.pub` files in `key_dir`. Mailboxes with a public key get encrypted storage (`.gemmail.enc`); mailboxes without a key store messages as plaintext.
+
+!!! note
+    The server loads only public keys for encryption. Private keys (`.enc.key`) remain user-owned and are used only by the CLI for decryption.
+
 ## Full Example
 
 ```toml
@@ -83,6 +97,10 @@ default_allow = false
 [verification]
 mode = "optional"
 probe_timeout = 5.0
+
+[encryption]
+enable = true
+key_dir = "/etc/titlani/keys"
 ```
 
 ## Validation

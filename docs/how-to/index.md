@@ -52,6 +52,14 @@ Practical recipes for common tasks. Each guide focuses on a single goal and assu
 
     [:octicons-arrow-right-24: Guide](sender-verification.md)
 
+-   :material-lock-outline:{ .lg .middle } **At-Rest Encryption**
+
+    ---
+
+    Encrypt stored messages with per-mailbox X25519 keys.
+
+    [:octicons-arrow-right-24: Guide](at-rest-encryption.md)
+
 -   :material-puzzle:{ .lg .middle } **Custom Message Handler**
 
     ---

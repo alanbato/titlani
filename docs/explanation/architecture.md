@@ -12,17 +12,20 @@ graph TB
     Identity["Identity (identity/)"]
     Content["Content (content/)"]
     Protocol["Protocol (protocol/)"]
+    Encryption["Encryption (encryption/)"]
     Tlacacoca["tlacacoca"]
 
     CLI --> Client
     CLI --> Server
     CLI --> Identity
+    CLI --> Encryption
     Client --> Protocol
     Client --> Content
     Client --> Identity
     Client --> Tlacacoca
     Server --> Protocol
     Server --> Content
+    Server --> Encryption
     Server --> Tlacacoca
     Protocol --> Content
     Identity --> Tlacacoca
@@ -56,6 +59,14 @@ Misfin identity certificates:
 - **`certificate.py`** — `MisfinIdentity`, `generate_identity_cert()`, `extract_identity()`, `normalize_fingerprint()`
 
 Uses `cryptography` directly for certificate generation (not tlacacoca) because Misfin needs a custom certificate layout. Uses tlacacoca for fingerprint utilities.
+
+### Encryption (`encryption/`)
+
+At-rest encryption for stored messages:
+
+- **`manager.py`** — `EncryptionManager` — X25519 ECDH + HKDF-SHA256 + AES-256-GCM encryption. Loads public keys for server-side encryption and private keys for CLI decryption.
+
+Uses `cryptography` directly. No dependency on tlacacoca.
 
 ### Client (`client/`)
 
@@ -96,8 +107,9 @@ Typer-based CLI providing `send`, `serve`, `identity generate/info`, `tofu list/
 4. **Server Protocol** buffers until `content_length` bytes received (phase 2: body)
 5. **Server** runs middleware chain (rate limiting, access control)
 6. **Handler** validates hostname, checks mailbox exists
-7. **Handler** parses gemmail message, stores as `.gemmail` file
-8. **Server** sends response with status code and fingerprint
+7. **Handler** parses gemmail message, encrypts if a public key is loaded for the mailbox
+8. **Handler** stores as `.gemmail` (plaintext) or `.gemmail.enc` (encrypted) file
+9. **Server** sends response with status code and fingerprint
 
 ## Design Decisions
 
