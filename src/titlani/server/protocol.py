@@ -100,6 +100,12 @@ class MisfinServerProtocol(asyncio.Protocol):
         # DoS protection: use max of C and B sizes
         dos_limit = max(MAX_HEADER_SIZE, MAX_B_REQUEST_SIZE)
         if len(self.buffer) > dos_limit and CRLF not in self.buffer:
+            logger.warning(
+                "header_too_large",
+                client_ip=(self.peer_name[0] if self.peer_name else "unknown"),
+                buffer_size=len(self.buffer),
+                limit=dos_limit,
+            )
             self._send_error(
                 StatusCode.BAD_REQUEST,
                 f"Header exceeds maximum size ({dos_limit} bytes)",
@@ -124,11 +130,24 @@ class MisfinServerProtocol(asyncio.Protocol):
                     self._send_error(StatusCode.BAD_REQUEST, str(e2))
                     return
             else:
+                logger.debug(
+                    "header_parse_failed",
+                    client_ip=(self.peer_name[0] if self.peer_name else "unknown"),
+                )
                 self._send_error(
                     StatusCode.BAD_REQUEST,
                     "Invalid request header",
                 )
                 return
+
+        logger.debug(
+            "header_parsed",
+            client_ip=(self.peer_name[0] if self.peer_name else "unknown"),
+            mailbox=self.request.mailbox,
+            hostname=self.request.hostname,
+            content_length=self.request.content_length,
+            protocol_version=self.request.protocol_version,
+        )
 
         # Attach client cert info
         client_cert = self._get_peer_certificate()
@@ -188,6 +207,13 @@ class MisfinServerProtocol(asyncio.Protocol):
                 status = _DENIAL_STATUS_MAP.get(
                     result.denial_reason or "",
                     StatusCode.TEMPORARY_FAILURE,
+                )
+                logger.info(
+                    "middleware_denied",
+                    client_ip=client_ip,
+                    denial_reason=result.denial_reason,
+                    status=status.value,
+                    mailbox=(self.request.mailbox if self.request else None),
                 )
                 meta = f"{status.name.replace('_', ' ').title()}"
                 if result.retry_after and status == StatusCode.SLOW_DOWN:
@@ -263,6 +289,11 @@ class MisfinServerProtocol(asyncio.Protocol):
             client_ip=(self.peer_name[0] if self.peer_name else "unknown"),
             status=response.status,
             duration_ms=round(duration_ms, 2),
+            mailbox=(self.request.mailbox if self.request else None),
+            hostname=(self.request.hostname if self.request else None),
+            protocol_version=(
+                self.request.protocol_version if self.request else None
+            ),
         )
 
         self.transport.write(response.to_bytes())
@@ -274,6 +305,12 @@ class MisfinServerProtocol(asyncio.Protocol):
 
     def _handle_timeout(self) -> None:
         if self.transport and not self.transport.is_closing():
+            logger.warning(
+                "request_timeout",
+                client_ip=(self.peer_name[0] if self.peer_name else "unknown"),
+                header_received=self.header_received,
+                mailbox=(self.request.mailbox if self.request else None),
+            )
             # Per spec: don't send data until receiving at least one byte
             if self.received_first_byte:
                 response = MisfinResponse(
@@ -290,6 +327,11 @@ class MisfinServerProtocol(asyncio.Protocol):
 
     def connection_lost(self, exc: Exception | None) -> None:
         self._cancel_timeout()
+        logger.debug(
+            "connection_lost",
+            client_ip=(self.peer_name[0] if self.peer_name else "unknown"),
+            error=str(exc) if exc else None,
+        )
         self.transport = None
 
     def _get_peer_certificate(self) -> x509.Certificate | None:

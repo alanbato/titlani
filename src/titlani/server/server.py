@@ -204,6 +204,10 @@ async def start_server(
         host=config.host,
         port=config.port,
         hostname=config.hostname,
+        rate_limiting=config.rate_limit_enable,
+        access_control=config.access_control_enable,
+        encryption=config.encryption_enable,
+        mailbox_dir=str(config.mailbox_dir),
     )
 
     try:

@@ -7,12 +7,16 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from tlacacoca import get_logger
+
 from ..content.gemmail import GemmailMessage, MisfinAddress
 from ..encryption.manager import EncryptionManager
 from ..identity.certificate import normalize_fingerprint
 from ..protocol.request import MisfinRequest
 from ..protocol.response import MisfinResponse
 from ..protocol.status import StatusCode
+
+logger = get_logger(__name__)
 
 
 class MessageHandler(abc.ABC):
@@ -39,6 +43,12 @@ class FileMailboxHandler(MessageHandler):
 
     async def handle_message(self, request: MisfinRequest) -> MisfinResponse:
         if request.hostname != self.hostname:
+            logger.info(
+                "domain_not_serviced",
+                requested_hostname=request.hostname,
+                server_hostname=self.hostname,
+                mailbox=request.mailbox,
+            )
             return MisfinResponse(
                 status=StatusCode.DOMAIN_NOT_SERVICED,
                 meta="Domain not serviced by this server",
@@ -46,6 +56,11 @@ class FileMailboxHandler(MessageHandler):
 
         # Verification probes: zero-length messages get a fingerprint response
         if request.content_length == 0:
+            logger.debug(
+                "verification_probe_received",
+                mailbox=request.mailbox,
+                hostname=request.hostname,
+            )
             return MisfinResponse(
                 status=StatusCode.SUCCESS,
                 meta=self.identity_cert_fingerprint,
@@ -61,6 +76,11 @@ class FileMailboxHandler(MessageHandler):
             or ".." in mailbox
             or not re.fullmatch(r"[a-zA-Z0-9._-]+", mailbox)
         ):
+            logger.warning(
+                "invalid_mailbox_name",
+                mailbox=repr(mailbox),
+                hostname=request.hostname,
+            )
             return MisfinResponse(
                 status=StatusCode.BAD_REQUEST,
                 meta="Invalid mailbox name",
@@ -73,6 +93,12 @@ class FileMailboxHandler(MessageHandler):
             resolved = mailbox_path.resolve(strict=False)
             mailbox_dir_resolved = self.mailbox_dir.resolve(strict=False)
             if not str(resolved).startswith(str(mailbox_dir_resolved) + os.sep):
+                logger.warning(
+                    "path_traversal_blocked",
+                    mailbox=mailbox,
+                    resolved_path=str(resolved),
+                    mailbox_dir=str(mailbox_dir_resolved),
+                )
                 return MisfinResponse(
                     status=StatusCode.BAD_REQUEST,
                     meta="Invalid mailbox name",
@@ -84,6 +110,11 @@ class FileMailboxHandler(MessageHandler):
             )
 
         if not mailbox_path.is_dir():
+            logger.info(
+                "mailbox_not_found",
+                mailbox=mailbox,
+                hostname=request.hostname,
+            )
             return MisfinResponse(
                 status=StatusCode.MAILBOX_NOT_FOUND,
                 meta="Mailbox does not exist",
@@ -92,6 +123,12 @@ class FileMailboxHandler(MessageHandler):
         # Validate and prepare message for storage
         message_bytes = self._prepare_message(request)
         if message_bytes is None:
+            logger.info(
+                "message_format_invalid",
+                mailbox=mailbox,
+                hostname=request.hostname,
+                content_length=request.content_length,
+            )
             return MisfinResponse(
                 status=StatusCode.BAD_REQUEST,
                 meta="Invalid message format",
@@ -141,8 +178,16 @@ class FileMailboxHandler(MessageHandler):
             filepath = mailbox_path / filename
             encrypted = self.encryption_manager.encrypt(mailbox, data)
             filepath.write_bytes(encrypted)
+            is_encrypted = True
         else:
             filename = f"{timestamp}.gemmail"
             filepath = mailbox_path / filename
             filepath.write_bytes(data)
+            is_encrypted = False
         os.chmod(filepath, 0o600)
+        logger.info(
+            "message_delivered",
+            mailbox=mailbox,
+            file=filename,
+            encrypted=is_encrypted,
+        )
