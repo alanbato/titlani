@@ -17,6 +17,7 @@ from .cli import (
     display_version_info,
     format_status_response,
 )
+from .cli.mailbox import list_messages, resolve_mailbox_dir, resolve_mailbox_name
 from .client.session import MisfinClient
 from .content.gemmail import GemmailMessage, MisfinAddress
 from .identity.certificate import (
@@ -398,67 +399,41 @@ app.add_typer(mail_app, name="mail")
 
 @mail_app.command("list")
 def mail_list(
-    mailbox_dir: Path = typer.Argument(
-        ...,
-        help="Path to mailbox directory",
-        exists=True,
-        dir_okay=True,
-        file_okay=False,
-        resolve_path=True,
+    mailbox_dir: Path | None = typer.Argument(
+        None,
+        help="Path to mailbox directory (auto-detected from config if omitted)",
     ),
     mailbox: str | None = typer.Option(
         None,
         "--mailbox",
         "-m",
-        help="Filter by specific mailbox name",
+        help="Filter by specific mailbox name (defaults to $USER)",
     ),
 ) -> None:
     """List messages in a mailbox directory."""
-    messages: list[tuple[Path, GemmailMessage]] = []
-
-    if mailbox:
-        mbox_path = mailbox_dir / mailbox
-        if not mbox_path.is_dir():
-            error_console.print(f"Mailbox not found: {mailbox}")
-            raise typer.Exit(code=1)
-        search_paths = [mbox_path]
-    else:
-        search_paths = sorted(p for p in mailbox_dir.iterdir() if p.is_dir())
-
-    for mbox_path in search_paths:
-        # List both plaintext and encrypted messages
-        gemmail_files = sorted(mbox_path.glob("*.gemmail"), reverse=True)
-        enc_files = sorted(mbox_path.glob("*.gemmail.enc"), reverse=True)
-        all_files = sorted(
-            [*gemmail_files, *enc_files],
-            key=lambda p: p.name,
-            reverse=True,
-        )
-        for gemmail_file in all_files:
-            if gemmail_file.suffix == ".enc":
-                # Show encrypted indicator without decrypting
-                messages.append((gemmail_file, None))  # type: ignore[arg-type]
-            else:
-                try:
-                    msg = GemmailMessage.from_bytes(gemmail_file.read_bytes())
-                    messages.append((gemmail_file, msg))
-                except ValueError:
-                    error_console.print(
-                        f"[yellow]Skipping invalid file: {gemmail_file.name}[/]"
-                    )
-
+    resolved_dir = resolve_mailbox_dir(mailbox_dir, error_console)
+    resolved_mailbox = resolve_mailbox_name(mailbox)
+    messages = list_messages(resolved_dir, resolved_mailbox, error_console)
     display_gemmail_list(messages, console)
 
 
 @mail_app.command("read")
 def mail_read(
-    gemmail_file: Path = typer.Argument(
+    message: str = typer.Argument(
         ...,
-        help="Path to .gemmail or .gemmail.enc file",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        resolve_path=True,
+        help="Message index (from 'mail list') or path to .gemmail file",
+    ),
+    mailbox_dir: Path | None = typer.Option(
+        None,
+        "--mailbox-dir",
+        "-d",
+        help="Mailbox directory (for index resolution)",
+    ),
+    mailbox: str | None = typer.Option(
+        None,
+        "--mailbox",
+        "-m",
+        help="Mailbox name (for index resolution, defaults to $USER)",
     ),
     encryption_key: Path | None = typer.Option(
         None,
@@ -472,6 +447,28 @@ def mail_read(
     ),
 ) -> None:
     """Read and display a gemmail message."""
+    # Resolve message argument: index or file path
+    try:
+        index = int(message)
+    except ValueError:
+        index = None
+
+    if index is not None:
+        resolved_dir = resolve_mailbox_dir(mailbox_dir, error_console)
+        resolved_mailbox = resolve_mailbox_name(mailbox)
+        messages = list_messages(resolved_dir, resolved_mailbox, error_console)
+        if index < 1 or index > len(messages):
+            error_console.print(
+                f"Invalid message index: {index} (valid range: 1-{len(messages)})"
+            )
+            raise typer.Exit(code=1)
+        gemmail_file = messages[index - 1][0]
+    else:
+        gemmail_file = Path(message).resolve()
+        if not gemmail_file.exists():
+            error_console.print(f"File not found: {gemmail_file}")
+            raise typer.Exit(code=1)
+
     try:
         if gemmail_file.suffix == ".enc":
             from .encryption.manager import EncryptionManager
@@ -480,8 +477,8 @@ def mail_read(
             if key_path is None:
                 # Auto-discover <mailbox>.enc.key from parent dir
                 mailbox_name = gemmail_file.parent.name
-                mailbox_dir = gemmail_file.parent.parent
-                key_path = mailbox_dir / f"{mailbox_name}.enc.key"
+                mbox_dir = gemmail_file.parent.parent
+                key_path = mbox_dir / f"{mailbox_name}.enc.key"
                 if not key_path.exists():
                     error_console.print(
                         f"No encryption key found at {key_path}\n"

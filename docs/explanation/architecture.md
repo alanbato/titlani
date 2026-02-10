@@ -6,7 +6,7 @@ Titlani is organized in layers, from low-level wire format to high-level CLI.
 
 ```mermaid
 graph TB
-    CLI["CLI (__main__.py)"]
+    CLI["CLI (__main__.py + cli/)"]
     Client["Client (client/)"]
     Server["Server (server/)"]
     Identity["Identity (identity/)"]
@@ -18,6 +18,7 @@ graph TB
     CLI --> Client
     CLI --> Server
     CLI --> Identity
+    CLI --> Content
     CLI --> Encryption
     Client --> Protocol
     Client --> Content
@@ -84,9 +85,14 @@ Async Misfin server:
 - **`protocol.py`** — `MisfinServerProtocol` — two-phase buffering state machine
 - **`server.py`** — `start_server()` — server lifecycle with auto-cert and middleware
 
-### CLI (`__main__.py`)
+### CLI (`cli/` and `__main__.py`)
 
-Typer-based CLI providing `send`, `serve`, `identity generate/info`, `tofu list/revoke`, and `version` commands.
+Typer-based CLI providing `send`, `serve`, `identity generate/info`, `tofu list/revoke`, `mail list/read/reply/delete`, and `version` commands.
+
+- **`cli/display.py`** — Rich display helpers (tables, panels, formatting)
+- **`cli/config.py`** — `ClientConfig` — client-side TOML config (XDG path via `platformdirs`)
+- **`cli/mailbox.py`** — Shared mailbox resolution and message listing logic used by `mail list` and `mail read`
+- **`__main__.py`** — Typer command definitions and CLI entry point
 
 ## Data Flow: Sending a Message
 

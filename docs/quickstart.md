@@ -65,7 +65,31 @@ mailbox_dir = "mailboxes"
 titlani serve --config server.toml
 ```
 
-## 4. Programmatic Usage
+## 4. Read Your Mail
+
+List and read received messages using the `mail` commands:
+
+```bash
+# List messages (auto-detects mailbox from $USER)
+titlani mail list /var/mail/misfin
+
+# Read message #1 from the listing
+titlani mail read 1
+```
+
+To skip the directory argument every time, create a [client config file](reference/configuration.md#client-configuration):
+
+```bash
+mkdir -p ~/.config/titlani
+cat > ~/.config/titlani/config.toml << 'EOF'
+[mail]
+mailbox_dir = "/var/mail/misfin"
+EOF
+```
+
+Now `titlani mail list` and `titlani mail read 2` work with no extra arguments.
+
+## 5. Programmatic Usage
 
 Use the Python API for more control:
 

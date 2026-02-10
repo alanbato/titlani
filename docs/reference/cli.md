@@ -166,50 +166,76 @@ titlani tofu revoke <hostname> [OPTIONS]
 List messages in a mailbox directory.
 
 ```bash
-titlani mail list <mailbox_dir> [OPTIONS]
+titlani mail list [mailbox_dir] [OPTIONS]
 ```
 
 **Arguments:**
 
 | Argument | Description |
 |----------|-------------|
-| `mailbox_dir` | Path to mailbox directory |
+| `mailbox_dir` | Path to mailbox directory (optional — auto-detected from [client config](configuration.md#client-configuration) if omitted) |
 
 **Options:**
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--mailbox` | `-m` | — | Filter by specific mailbox name |
+| `--mailbox` | `-m` | `$USER` | Filter by specific mailbox name (defaults to current OS user) |
+
+Messages are listed newest-first with a `#` index column. You can pass the index number to `mail read` to open a message directly.
 
 Encrypted messages (`.gemmail.enc`) are shown with an encrypted indicator.
+
+**Examples:**
+
+```bash
+# Auto-detect mailbox directory from config, mailbox from $USER
+titlani mail list
+
+# Explicit directory, auto-detect mailbox
+titlani mail list /var/mail/misfin
+
+# Explicit directory and mailbox
+titlani mail list /var/mail/misfin --mailbox alice
+```
 
 ---
 
 ## `mail read`
 
-Read and display a gemmail message.
+Read and display a gemmail message. Accepts either a message index (from `mail list`) or a file path.
 
 ```bash
-titlani mail read <gemmail_file> [OPTIONS]
+titlani mail read <message> [OPTIONS]
 ```
 
 **Arguments:**
 
 | Argument | Description |
 |----------|-------------|
-| `gemmail_file` | Path to `.gemmail` or `.gemmail.enc` file |
+| `message` | Message index (from `mail list` output) or path to `.gemmail`/`.gemmail.enc` file |
 
 **Options:**
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
+| `--mailbox-dir` | `-d` | — | Mailbox directory for index resolution (auto-detected from [client config](configuration.md#client-configuration) if omitted) |
+| `--mailbox` | `-m` | `$USER` | Mailbox name for index resolution (defaults to current OS user) |
 | `--encryption-key` | `-e` | — | Path to X25519 private key for decryption |
+
+When using an index, the mailbox directory and name are resolved the same way as `mail list` — from explicit options, then client config, then `$USER`.
 
 For `.gemmail.enc` files, the CLI auto-discovers `<mailbox>.enc.key` from the mailbox parent directory. Use `--encryption-key` to override.
 
-**Example:**
+**Examples:**
 
 ```bash
+# Read message #2 from the listing (uses config + $USER)
+titlani mail read 2
+
+# Read by index with explicit directory and mailbox
+titlani mail read 1 -d /var/mail/misfin -m alice
+
+# Read by file path (still works)
 titlani mail read mailboxes/alice/message.gemmail.enc \
     --encryption-key ~/.titlani/alice.enc.key
 ```

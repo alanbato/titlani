@@ -280,11 +280,12 @@ def display_gemmail_list(
         return
 
     table = Table(title=f"Messages ({len(messages)})")
+    table.add_column("#", style="bold", justify="right", width=4)
     table.add_column("Received", style="dim", width=18)
     table.add_column("From", style="cyan", width=30)
     table.add_column("Subject")
 
-    for filepath, msg in messages:
+    for idx, (filepath, msg) in enumerate(messages, start=1):
         # Parse timestamp from filename (e.g. 20260208T194757Z)
         stem = filepath.stem
         # Strip .gemmail from .gemmail.enc files
@@ -303,7 +304,7 @@ def display_gemmail_list(
         else:
             sender = msg.senders[0].long_form if msg.senders else "[dim]anonymous[/]"
             subject = msg.subject or "[dim]no subject[/]"
-        table.add_row(time_display, sender, subject)
+        table.add_row(str(idx), time_display, sender, subject)
 
     console.print(table)
 

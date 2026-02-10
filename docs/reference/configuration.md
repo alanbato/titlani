@@ -1,5 +1,37 @@
 # Configuration
 
+## Client Configuration
+
+The CLI reads a client config file for `mail list` and `mail read` defaults, so you don't need to pass the mailbox directory every time.
+
+**Location:** `$XDG_CONFIG_HOME/titlani/config.toml` (default: `~/.config/titlani/config.toml`)
+
+### `[mail]`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `mailbox_dir` | string | yes | Path to the directory containing mailbox subdirectories |
+
+### Example
+
+```toml
+[mail]
+mailbox_dir = "/var/mail/misfin"
+```
+
+With this config in place, the following commands work without explicit paths:
+
+```bash
+titlani mail list          # lists messages for $USER in /var/mail/misfin
+titlani mail read 2        # reads message #2 from the listing
+```
+
+The config file is optional. If absent, you must pass `mailbox_dir` as a CLI argument.
+
+---
+
+## Server Configuration
+
 The Titlani server is configured via a TOML file with five sections.
 
 ## `[server]`

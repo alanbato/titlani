@@ -1,4 +1,4 @@
-"""Tests for mail delete and mail reply CLI commands."""
+"""Tests for mail CLI commands."""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -6,6 +6,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from titlani.__main__ import app
+from titlani.cli.config import ClientConfig
 from titlani.content.gemmail import GemmailMessage, MisfinAddress
 
 runner = CliRunner()
@@ -167,3 +168,192 @@ class TestMailReply:
         msg = GemmailMessage.from_bytes(gemmail.read_bytes())
         quoted = "\n".join(f"> {line}" for line in msg.body.split("\n"))
         assert "> How are you?" in quoted
+
+
+class TestClientConfig:
+    def test_load_from_toml(self, tmp_path):
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('[mail]\nmailbox_dir = "/var/mail/misfin"\n')
+        config = ClientConfig.from_toml(config_file)
+        assert config.mailbox_dir == Path("/var/mail/misfin")
+
+    def test_missing_file_returns_none(self, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", "/nonexistent/path")
+        config = ClientConfig.load()
+        assert config is None
+
+    def test_xdg_config_home_respected(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / "titlani"
+        config_dir.mkdir()
+        config_file = config_dir / "config.toml"
+        config_file.write_text('[mail]\nmailbox_dir = "/tmp/mailboxes"\n')
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        config = ClientConfig.load()
+        assert config is not None
+        assert config.mailbox_dir == Path("/tmp/mailboxes")
+
+    def test_missing_mailbox_dir_key_raises(self, tmp_path):
+        import pytest
+
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("[mail]\n")
+        with pytest.raises(ValueError, match="mailbox_dir"):
+            ClientConfig.from_toml(config_file)
+
+
+class TestMailListDefaults:
+    def _setup_mailbox(self, tmp_path, mailbox="alice"):
+        mbox = tmp_path / mailbox
+        mbox.mkdir()
+        _create_gemmail(
+            mbox / "20250110T153045Z.gemmail",
+            sender="bob@other.com",
+            subject="First",
+        )
+        _create_gemmail(
+            mbox / "20250111T100000Z.gemmail",
+            sender="carol@other.com",
+            subject="Second",
+        )
+        return tmp_path
+
+    def test_explicit_dir_works(self, tmp_path):
+        mailbox_dir = self._setup_mailbox(tmp_path)
+        result = runner.invoke(
+            app,
+            ["mail", "list", str(mailbox_dir), "-m", "alice"],
+        )
+        assert result.exit_code == 0
+        assert "First" in result.output
+        assert "Second" in result.output
+
+    def test_config_fallback(self, tmp_path, monkeypatch):
+        mailbox_dir = self._setup_mailbox(tmp_path)
+        config_dir = tmp_path / "config" / "titlani"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.toml").write_text(
+            f'[mail]\nmailbox_dir = "{mailbox_dir}"\n'
+        )
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("USER", "alice")
+        result = runner.invoke(app, ["mail", "list"])
+        assert result.exit_code == 0
+        assert "First" in result.output
+
+    def test_user_auto_detection(self, tmp_path, monkeypatch):
+        mailbox_dir = self._setup_mailbox(tmp_path, "testuser")
+        config_dir = tmp_path / "config" / "titlani"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.toml").write_text(
+            f'[mail]\nmailbox_dir = "{mailbox_dir}"\n'
+        )
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("USER", "testuser")
+        result = runner.invoke(app, ["mail", "list"])
+        assert result.exit_code == 0
+        assert "First" in result.output
+
+    def test_row_numbers_in_output(self, tmp_path):
+        mailbox_dir = self._setup_mailbox(tmp_path)
+        result = runner.invoke(
+            app,
+            ["mail", "list", str(mailbox_dir), "-m", "alice"],
+        )
+        assert result.exit_code == 0
+        # Row numbers 1 and 2 should appear in the table
+        assert " 1 " in result.output
+        assert " 2 " in result.output
+
+    def test_no_dir_no_config_shows_error(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
+        result = runner.invoke(app, ["mail", "list"])
+        assert result.exit_code == 1
+        assert "mailbox directory" in result.output.lower()
+
+
+class TestMailReadByIndex:
+    def _setup_mailbox(self, tmp_path, mailbox="alice"):
+        mbox = tmp_path / mailbox
+        mbox.mkdir()
+        _create_gemmail(
+            mbox / "20250110T153045Z.gemmail",
+            sender="bob@other.com",
+            subject="Older message",
+        )
+        _create_gemmail(
+            mbox / "20250111T100000Z.gemmail",
+            sender="carol@other.com",
+            subject="Newer message",
+        )
+        return tmp_path
+
+    def test_read_by_index(self, tmp_path, monkeypatch):
+        mailbox_dir = self._setup_mailbox(tmp_path)
+        config_dir = tmp_path / "config" / "titlani"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.toml").write_text(
+            f'[mail]\nmailbox_dir = "{mailbox_dir}"\n'
+        )
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("USER", "alice")
+        # Index 1 = newest (reverse order)
+        result = runner.invoke(app, ["mail", "read", "1"])
+        assert result.exit_code == 0
+        assert "Newer message" in result.output
+
+    def test_read_by_index_with_explicit_dir(self, tmp_path):
+        mailbox_dir = self._setup_mailbox(tmp_path)
+        result = runner.invoke(
+            app,
+            [
+                "mail",
+                "read",
+                "2",
+                "-d",
+                str(mailbox_dir),
+                "-m",
+                "alice",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Older message" in result.output
+
+    def test_read_by_path_still_works(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        gemmail = _create_gemmail(
+            mbox / "20250110T153045Z.gemmail",
+            sender="bob@other.com",
+            subject="Direct path",
+        )
+        result = runner.invoke(app, ["mail", "read", str(gemmail)])
+        assert result.exit_code == 0
+        assert "Direct path" in result.output
+
+    def test_out_of_range_index(self, tmp_path, monkeypatch):
+        mailbox_dir = self._setup_mailbox(tmp_path)
+        config_dir = tmp_path / "config" / "titlani"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.toml").write_text(
+            f'[mail]\nmailbox_dir = "{mailbox_dir}"\n'
+        )
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("USER", "alice")
+        result = runner.invoke(app, ["mail", "read", "99"])
+        assert result.exit_code == 1
+        assert "Invalid message index" in result.output
+
+    def test_index_matches_list_order(self, tmp_path, monkeypatch):
+        mailbox_dir = self._setup_mailbox(tmp_path)
+        config_dir = tmp_path / "config" / "titlani"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.toml").write_text(
+            f'[mail]\nmailbox_dir = "{mailbox_dir}"\n'
+        )
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("USER", "alice")
+        # Index 1 = newest, index 2 = oldest (reverse sort)
+        result1 = runner.invoke(app, ["mail", "read", "1"])
+        assert "Newer message" in result1.output
+        result2 = runner.invoke(app, ["mail", "read", "2"])
+        assert "Older message" in result2.output

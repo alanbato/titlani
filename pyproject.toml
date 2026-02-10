@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "cryptography>=46.0.4",
+    "platformdirs>=4.0.0",
     "rich>=14.3.2",
     "ruff>=0.15.0",
     "structlog>=25.5.0",
