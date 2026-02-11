@@ -116,7 +116,9 @@ nav:
       - Manage TOFU: how-to/manage-tofu.md
       - Rate Limiting: how-to/rate-limiting.md
       - Access Control: how-to/access-control.md
+      - Contact Blocking: how-to/contact-blocking.md
       - Sender Verification: how-to/sender-verification.md
+      - Auto-Reply: how-to/auto-reply.md
       - At-Rest Encryption: how-to/at-rest-encryption.md
       - GMAP (Remote Mailbox Access): how-to/gmap.md
       - Custom Message Handler: how-to/custom-message-handler.md

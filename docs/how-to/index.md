@@ -52,6 +52,22 @@ Practical recipes for common tasks. Each guide focuses on a single goal and assu
 
     [:octicons-arrow-right-24: Guide](sender-verification.md)
 
+-   :material-account-cancel:{ .lg .middle } **Contact Blocking**
+
+    ---
+
+    Block specific sender addresses from delivering to a mailbox.
+
+    [:octicons-arrow-right-24: Guide](contact-blocking.md)
+
+-   :material-reply:{ .lg .middle } **Auto-Reply**
+
+    ---
+
+    Set up automatic out-of-office replies for a mailbox.
+
+    [:octicons-arrow-right-24: Guide](auto-reply.md)
+
 -   :material-lock-outline:{ .lg .middle } **At-Rest Encryption**
 
     ---

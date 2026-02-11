@@ -140,8 +140,9 @@ GMAP maintains a `.gmap.json` file in each mailbox directory:
 mailboxes/
   alice/
     .gmap.json                    ← tag index
-    20260211T120000Z.gemmail
-    20260211T130000Z.gemmail.enc
+    20260211T120000Z.gemmail.new  ← unread message
+    20260211T130000Z.gemmail      ← read message
+    20260211T140000Z.gemmail.enc  ← encrypted message
 ```
 
 The index maps message IDs to their tags and timestamps:
@@ -163,7 +164,8 @@ The index maps message IDs to their tags and timestamps:
 
 The index syncs with the filesystem on each GMAP request:
 
-- New `.gemmail` or `.gemmail.enc` files are discovered and auto-tagged with `Inbox` and `Unread`
+- New `.gemmail`, `.gemmail.new`, `.gemmail.enc`, and `.gemmail.enc.new` files are discovered and auto-tagged with `Inbox` and `Unread`
+- When a `.new` file is renamed (e.g., the CLI marks it as read), the index updates the filename but preserves existing tags
 - Files that have been deleted outside GMAP are removed from the index
 - The index is written atomically (temp file + rename) to prevent corruption
 

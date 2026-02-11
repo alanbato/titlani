@@ -183,6 +183,8 @@ titlani mail list [mailbox_dir] [OPTIONS]
 
 Messages are listed newest-first with a `#` index column. You can pass the index number to `mail read` to open a message directly.
 
+Unread messages (`.gemmail.new`) are shown with a `NEW` indicator. The table title includes a count of new messages (e.g., "Messages (5) (2 new)").
+
 Encrypted messages (`.gemmail.enc`) are shown with an encrypted indicator.
 
 **Examples:**
@@ -223,6 +225,8 @@ titlani mail read <message> [OPTIONS]
 | `--encryption-key` | `-e` | — | Path to X25519 private key for decryption |
 
 When using an index, the mailbox directory and name are resolved the same way as `mail list` — from explicit options, then client config, then `$USER`.
+
+Reading an unread message (`.gemmail.new`) automatically marks it as read by renaming it to `.gemmail`. This happens after the message is displayed.
 
 For `.gemmail.enc` files, the CLI auto-discovers `<mailbox>.enc.key` from the mailbox parent directory. Use `--encryption-key` to override.
 
@@ -274,6 +278,66 @@ titlani mail reply mailboxes/alice/message.gemmail.enc \
     --encryption-key ~/.titlani/alice.enc.key \
     --cert alice.pem --key alice.key \
     --message "Thanks for your message!"
+```
+
+---
+
+## `mail block`
+
+Block a sender address from delivering mail to a mailbox.
+
+```bash
+titlani mail block <address> [OPTIONS]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `address` | Sender address to block (`mailbox@hostname`) |
+
+**Options:**
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--mailbox-dir` | `-d` | — | Mailbox directory (auto-detected from [client config](configuration.md#client-configuration) if omitted) |
+| `--mailbox` | `-m` | `$USER` | Mailbox name |
+
+**Example:**
+
+```bash
+titlani mail block spam@evil.com --mailbox alice
+```
+
+See [Contact Blocking](../how-to/contact-blocking.md) for details.
+
+---
+
+## `mail unblock`
+
+Remove a sender address from the block list.
+
+```bash
+titlani mail unblock <address> [OPTIONS]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `address` | Sender address to unblock |
+
+**Options:**
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--mailbox-dir` | `-d` | — | Mailbox directory (auto-detected from [client config](configuration.md#client-configuration) if omitted) |
+| `--mailbox` | `-m` | `$USER` | Mailbox name |
+
+**Example:**
+
+```bash
+titlani mail unblock spam@evil.com --mailbox alice
 ```
 
 ---

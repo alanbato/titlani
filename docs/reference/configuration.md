@@ -111,6 +111,17 @@ GMAP (Gemini Mailbox Access Protocol) for remote mailbox access. See [GMAP](../h
 
 When enabled, the server accepts both `misfin://` and `gemini://` requests on the same port. Clients authenticate with their Misfin identity certificate to access their mailbox remotely.
 
+## `[auto_reply]`
+
+Server-side auto-reply for out-of-office messages. See [Auto-Reply](../how-to/auto-reply.md) for setup details.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enable` | bool | `false` | Enable auto-reply |
+| `interval` | int | `86400` | Minimum seconds between auto-replies to the same sender |
+
+When enabled, the server checks for a `.auto-reply` file in the recipient's mailbox directory after each delivery. If present, it sends the file contents as a reply with subject `[Auto-Reply]`. Requires `identity_certfile` and `identity_keyfile` to be configured in `[server]`.
+
 ## Full Example
 
 ```toml
@@ -146,6 +157,10 @@ key_dir = "/etc/titlani/keys"
 
 [gmap]
 enable = true
+
+[auto_reply]
+enable = true
+interval = 86400
 ```
 
 ## Validation
