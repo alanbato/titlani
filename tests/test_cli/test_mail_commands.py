@@ -116,8 +116,15 @@ class TestMailDelete:
         result = runner.invoke(
             app,
             [
-                "mail", "delete", "1", "2",
-                "-d", str(tmp_path), "-m", "alice", "-f",
+                "mail",
+                "delete",
+                "1",
+                "2",
+                "-d",
+                str(tmp_path),
+                "-m",
+                "alice",
+                "-f",
             ],
         )
         assert result.exit_code == 0
@@ -248,13 +255,9 @@ class TestClientConfig:
 
     def test_server_config_fallback(self, tmp_path):
         server_toml = tmp_path / "server.toml"
-        server_toml.write_text(
-            '[server]\nmailbox_dir = "/srv/misfin/mail"\n'
-        )
+        server_toml.write_text('[server]\nmailbox_dir = "/srv/misfin/mail"\n')
         config_file = tmp_path / "config.toml"
-        config_file.write_text(
-            f'[mail]\nserver_config = "{server_toml}"\n'
-        )
+        config_file.write_text(f'[mail]\nserver_config = "{server_toml}"\n')
         config = ClientConfig.from_toml(config_file)
         assert config.mailbox_dir == Path("/srv/misfin/mail")
 
@@ -262,23 +265,18 @@ class TestClientConfig:
         import pytest
 
         server_toml = tmp_path / "server.toml"
-        server_toml.write_text("[server]\nhost = \"localhost\"\n")
+        server_toml.write_text('[server]\nhost = "localhost"\n')
         config_file = tmp_path / "config.toml"
-        config_file.write_text(
-            f'[mail]\nserver_config = "{server_toml}"\n'
-        )
+        config_file.write_text(f'[mail]\nserver_config = "{server_toml}"\n')
         with pytest.raises(ValueError, match="mailbox_dir"):
             ClientConfig.from_toml(config_file)
 
     def test_explicit_mailbox_dir_overrides_server_config(self, tmp_path):
         server_toml = tmp_path / "server.toml"
-        server_toml.write_text(
-            '[server]\nmailbox_dir = "/srv/misfin/mail"\n'
-        )
+        server_toml.write_text('[server]\nmailbox_dir = "/srv/misfin/mail"\n')
         config_file = tmp_path / "config.toml"
         config_file.write_text(
-            f'[mail]\nmailbox_dir = "/my/mail"\n'
-            f'server_config = "{server_toml}"\n'
+            f'[mail]\nmailbox_dir = "/my/mail"\nserver_config = "{server_toml}"\n'
         )
         config = ClientConfig.from_toml(config_file)
         assert config.mailbox_dir == Path("/my/mail")

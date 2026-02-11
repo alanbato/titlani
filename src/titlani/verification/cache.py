@@ -2,8 +2,10 @@
 
 import os
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+_DEFAULT_TTL = 604800  # 7 days
 
 
 class SenderVerificationCache:
@@ -12,11 +14,16 @@ class SenderVerificationCache:
     Avoids repeated probes for previously verified senders.
     """
 
-    def __init__(self, db_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        db_path: Path | None = None,
+        ttl_seconds: int = _DEFAULT_TTL,
+    ) -> None:
         if db_path is None:
             self._db_path = ":memory:"
         else:
             self._db_path = str(db_path)
+        self._ttl_seconds = ttl_seconds
         self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
         if self._db_path != ":memory:":
             os.chmod(self._db_path, 0o600)
@@ -32,11 +39,19 @@ class SenderVerificationCache:
         )
         self._conn.commit()
 
+    def __enter__(self) -> "SenderVerificationCache":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
     def get_fingerprint(self, address: str) -> str | None:
-        """Return cached fingerprint for *address*, or None."""
+        """Return cached fingerprint for *address*, or None if missing/expired."""
+        cutoff = datetime.now(UTC) - timedelta(seconds=self._ttl_seconds)
         cur = self._conn.execute(
-            "SELECT fingerprint FROM verified_senders WHERE address = ?",
-            (address,),
+            "SELECT fingerprint FROM verified_senders "
+            "WHERE address = ? AND verified_at >= ?",
+            (address, cutoff.isoformat()),
         )
         row = cur.fetchone()
         return row[0] if row else None
@@ -77,6 +92,16 @@ class SenderVerificationCache:
         for address, fingerprint, ts_str in cur.fetchall():
             results.append((address, fingerprint, datetime.fromisoformat(ts_str)))
         return results
+
+    def cleanup(self) -> int:
+        """Remove expired entries. Returns count of purged rows."""
+        cutoff = datetime.now(UTC) - timedelta(seconds=self._ttl_seconds)
+        cur = self._conn.execute(
+            "DELETE FROM verified_senders WHERE verified_at < ?",
+            (cutoff.isoformat(),),
+        )
+        self._conn.commit()
+        return cur.rowcount
 
     def close(self) -> None:
         self._conn.close()

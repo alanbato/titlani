@@ -1,7 +1,9 @@
 """Tests for SenderVerificationCache."""
 
 import stat
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from titlani.verification.cache import SenderVerificationCache
 
@@ -58,4 +60,52 @@ class TestSenderVerificationCache:
         cache = SenderVerificationCache(db_path)
         mode = stat.S_IMODE(db_path.stat().st_mode)
         assert mode == 0o600
+        cache.close()
+
+    def test_context_manager(self) -> None:
+        with SenderVerificationCache() as cache:
+            cache.add_verified("alice@example.com", "abc123")
+            assert cache.get_fingerprint("alice@example.com") == "abc123"
+
+
+class TestCacheTTL:
+    def test_expired_entry_returns_none(self) -> None:
+        cache = SenderVerificationCache(ttl_seconds=60)
+        cache.add_verified("alice@example.com", "abc123")
+
+        # Simulate time passing beyond TTL
+        future = datetime.now(UTC) + timedelta(seconds=120)
+        with patch("titlani.verification.cache.datetime") as mock_dt:
+            mock_dt.now.return_value = future
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            result = cache.get_fingerprint("alice@example.com")
+
+        assert result is None
+        cache.close()
+
+    def test_fresh_entry_returns_fingerprint(self) -> None:
+        cache = SenderVerificationCache(ttl_seconds=3600)
+        cache.add_verified("alice@example.com", "abc123")
+        assert cache.get_fingerprint("alice@example.com") == "abc123"
+        cache.close()
+
+    def test_cleanup_removes_expired(self) -> None:
+        cache = SenderVerificationCache(ttl_seconds=60)
+        cache.add_verified("alice@example.com", "abc123")
+
+        future = datetime.now(UTC) + timedelta(seconds=120)
+        with patch("titlani.verification.cache.datetime") as mock_dt:
+            mock_dt.now.return_value = future
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            removed = cache.cleanup()
+
+        assert removed == 1
+        cache.close()
+
+    def test_cleanup_keeps_fresh(self) -> None:
+        cache = SenderVerificationCache(ttl_seconds=3600)
+        cache.add_verified("alice@example.com", "abc123")
+        removed = cache.cleanup()
+        assert removed == 0
+        assert cache.get_fingerprint("alice@example.com") == "abc123"
         cache.close()

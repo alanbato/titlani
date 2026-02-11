@@ -23,9 +23,7 @@ class ClientConfig:
         if mailbox_dir is None:
             server_config = mail.get("server_config")
             if server_config:
-                mailbox_dir = cls._read_server_mailbox_dir(
-                    Path(server_config)
-                )
+                mailbox_dir = cls._read_server_mailbox_dir(Path(server_config))
 
         if mailbox_dir is None:
             raise ValueError(

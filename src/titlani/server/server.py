@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -35,6 +36,38 @@ from .handler import FileMailboxHandler
 from .protocol import MisfinServerProtocol
 
 logger = get_logger(__name__)
+
+
+def _load_recipient_fingerprints(
+    cert_dir: Path,
+    fallback_fingerprint: str,
+) -> dict[str, str]:
+    """Scan for per-mailbox identity certs (<mailbox>.pem) and compute fingerprints.
+
+    Returns a dict mapping mailbox name to normalized fingerprint.
+    """
+    fingerprints: dict[str, str] = {}
+    if not cert_dir.is_dir():
+        return fingerprints
+
+    for pem_file in cert_dir.glob("*.pem"):
+        mailbox = pem_file.stem
+        try:
+            cert = load_pem_x509_certificate(pem_file.read_bytes())
+            fp = normalize_fingerprint(get_certificate_fingerprint(cert))
+            fingerprints[mailbox] = fp
+            logger.info(
+                "recipient_cert_loaded",
+                mailbox=mailbox,
+                fingerprint=fp[:16] + "...",
+            )
+        except Exception:
+            logger.warning(
+                "recipient_cert_load_failed",
+                mailbox=mailbox,
+                path=str(pem_file),
+            )
+    return fingerprints
 
 
 def _setup_encryption(
@@ -155,20 +188,31 @@ async def start_server(
     # Set up encryption if enabled
     encryption_manager = _setup_encryption(config)
 
+    # Load per-mailbox recipient fingerprints
+    cert_dir = config.identity_cert_dir or config.mailbox_dir
+    recipient_fps = _load_recipient_fingerprints(cert_dir, id_fingerprint)
+
+    def _get_recipient_fingerprint(mailbox: str) -> str | None:
+        return recipient_fps.get(mailbox, id_fingerprint)
+
     # Create base handler
     handler: FileMailboxHandler | VerifyingHandler = FileMailboxHandler(
         mailbox_dir=config.mailbox_dir,
         hostname=config.hostname,
+        recipient_fingerprint_fn=_get_recipient_fingerprint,
         identity_cert_fingerprint=id_fingerprint,
         encryption_manager=encryption_manager,
     )
 
     # Wrap with verification if mode is not "off"
+    cache: SenderVerificationCache | None = None
     if config.verification_mode != "off":
         cache_path = config.verification_cache_path
         if cache_path is None:
             cache_path = config.mailbox_dir / "verification_cache.db"
-        cache = SenderVerificationCache(cache_path)
+        cache = SenderVerificationCache(
+            cache_path, ttl_seconds=config.verification_cache_ttl
+        )
 
         verifier = ProbeVerifier(
             cache=cache,
@@ -216,4 +260,8 @@ async def start_server(
     except asyncio.CancelledError:
         pass
     finally:
+        if cache is not None:
+            cache.close()
+        if tmp_dir is not None:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
         logger.info("server_stopped")

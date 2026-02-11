@@ -11,7 +11,7 @@ from tlacacoca import get_logger
 
 from ..content.gemmail import GemmailMessage, MisfinAddress
 from ..encryption.manager import EncryptionManager
-from ..identity.certificate import normalize_fingerprint
+from ..identity.certificate import extract_identity, normalize_fingerprint
 from ..protocol.request import MisfinRequest
 from ..protocol.response import MisfinResponse
 from ..protocol.status import StatusCode
@@ -148,7 +148,27 @@ class FileMailboxHandler(MessageHandler):
             meta=fingerprint,
         )
 
+    @staticmethod
+    def _extract_sender(request: MisfinRequest) -> MisfinAddress | None:
+        """Extract sender identity from client certificate if available."""
+        if request.client_cert is None:
+            return None
+        try:
+            identity = extract_identity(request.client_cert)
+            if identity.mailbox and identity.hostname:
+                return MisfinAddress(
+                    mailbox=identity.mailbox,
+                    hostname=identity.hostname,
+                    blurb=identity.blurb,
+                )
+        except Exception:
+            pass
+        return None
+
     def _prepare_message(self, request: MisfinRequest) -> bytes | None:
+        now = datetime.now(UTC)
+        sender = self._extract_sender(request)
+
         if request.protocol_version == "B":
             body_text = request.raw_message.decode("utf-8")
             if not body_text.endswith("\n"):
@@ -157,19 +177,26 @@ class FileMailboxHandler(MessageHandler):
                 mailbox=request.mailbox,
                 hostname=request.hostname,
             )
+            senders = [sender] if sender else []
             envelope = GemmailMessage(
-                senders=[],
+                senders=senders,
                 recipients=[recipient],
-                timestamps=[datetime.now(UTC)],
+                timestamps=[now],
                 body=body_text,
             )
             return envelope.to_bytes()
 
         try:
-            request.parse_message()
+            msg = request.parse_message()
         except ValueError:
             return None
-        return request.raw_message
+
+        # Prepend server timestamp and sender identity per spec
+        msg.timestamps.insert(0, now)
+        if sender:
+            msg.senders.insert(0, sender)
+
+        return msg.to_bytes()
 
     def _store_message(self, mailbox: str, mailbox_path: Path, data: bytes) -> None:
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")

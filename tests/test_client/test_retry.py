@@ -8,21 +8,28 @@ from titlani.protocol.status import StatusCode
 
 
 class TestParseRetryDelay:
+    def _client(self, **kwargs):
+        return MisfinClient(trust_on_first_use=False, **kwargs)
+
     def test_parse_delay_from_meta(self):
-        delay = MisfinClient._parse_retry_delay("Slow Down. Retry after 30s")
+        delay = self._client()._parse_retry_delay("Slow Down. Retry after 30s")
         assert delay == 30.0
 
     def test_parse_delay_with_spaces(self):
-        delay = MisfinClient._parse_retry_delay("Retry after 5 s")
+        delay = self._client()._parse_retry_delay("Retry after 5 s")
         assert delay == 5.0
 
-    def test_parse_delay_unparseable_returns_default(self):
-        delay = MisfinClient._parse_retry_delay("Slow down please")
+    def test_parse_delay_unparseable_returns_base_delay(self):
+        delay = self._client()._parse_retry_delay("Slow down please")
         assert delay == 1.0
 
     def test_parse_delay_empty_meta(self):
-        delay = MisfinClient._parse_retry_delay("")
+        delay = self._client()._parse_retry_delay("")
         assert delay == 1.0
+
+    def test_parse_delay_uses_custom_base_delay(self):
+        delay = self._client(retry_base_delay=2.5)._parse_retry_delay("Slow down please")
+        assert delay == 2.5
 
 
 class TestRetryOnRateLimit:

@@ -291,9 +291,7 @@ class MisfinServerProtocol(asyncio.Protocol):
             duration_ms=round(duration_ms, 2),
             mailbox=(self.request.mailbox if self.request else None),
             hostname=(self.request.hostname if self.request else None),
-            protocol_version=(
-                self.request.protocol_version if self.request else None
-            ),
+            protocol_version=(self.request.protocol_version if self.request else None),
         )
 
         self.transport.write(response.to_bytes())

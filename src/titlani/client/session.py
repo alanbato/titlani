@@ -14,7 +14,7 @@ from tlacacoca import (
 )
 
 from ..content.gemmail import GemmailMessage, MisfinAddress
-from ..protocol.constants import DEFAULT_PORT, REQUEST_TIMEOUT
+from ..protocol.constants import DEFAULT_PORT, MAX_REDIRECTS, REQUEST_TIMEOUT
 from ..protocol.request import MisfinRequest
 from ..protocol.response import MisfinResponse
 from ..protocol.status import StatusCode, is_redirect
@@ -73,7 +73,7 @@ class MisfinClient:
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> None:
-        pass
+        self.tofu_db = None
 
     async def send(
         self,
@@ -116,7 +116,12 @@ class MisfinClient:
         message_bytes = message.to_bytes()
         return await self.send_raw(to, message_bytes)
 
-    async def send_raw(self, to: str, message_bytes: bytes) -> MisfinResponse:
+    async def send_raw(
+        self,
+        to: str,
+        message_bytes: bytes,
+        _redirect_depth: int = 0,
+    ) -> MisfinResponse:
         """Send pre-formatted message bytes."""
         if "@" not in to:
             raise ValueError(f"Invalid address: {to!r}")
@@ -130,7 +135,7 @@ class MisfinClient:
             raw_message=message_bytes,
         )
 
-        return await self._send_request(request, hostname)
+        return await self._send_request(request, hostname, _redirect_depth)
 
     _B_FALLBACK_STATUSES = {
         StatusCode.BAD_REQUEST,
@@ -139,7 +144,10 @@ class MisfinClient:
     }
 
     async def _send_request(
-        self, request: MisfinRequest, hostname: str
+        self,
+        request: MisfinRequest,
+        hostname: str,
+        redirect_depth: int = 0,
     ) -> MisfinResponse:
         response = await self._send_request_once(request, hostname)
 
@@ -149,6 +157,21 @@ class MisfinClient:
             await asyncio.sleep(delay)
             response = await self._send_request_once(request, hostname)
             retries += 1
+
+        # Handle redirects
+        if is_redirect(response.status):
+            redirect_addr = response.redirect_address
+            if redirect_addr:
+                if redirect_depth >= MAX_REDIRECTS:
+                    return MisfinResponse(
+                        status=StatusCode.PERMANENT_FAILURE,
+                        meta="Too many redirects",
+                    )
+                return await self.send_raw(
+                    redirect_addr,
+                    request.raw_message,
+                    _redirect_depth=redirect_depth + 1,
+                )
 
         # Misfin(B) fallback
         if (
@@ -206,12 +229,11 @@ class MisfinClient:
         finally:
             transport.close()
 
-    @staticmethod
-    def _parse_retry_delay(meta: str) -> float:
+    def _parse_retry_delay(self, meta: str) -> float:
         match = _RETRY_DELAY_RE.search(meta)
         if match:
             return float(match.group(1))
-        return 1.0
+        return self.retry_base_delay
 
     async def _send_request_once(
         self, request: MisfinRequest, hostname: str
@@ -260,13 +282,6 @@ class MisfinClient:
             response: MisfinResponse = await asyncio.wait_for(
                 response_future, timeout=self.timeout
             )
-
-            # Handle redirects
-            if is_redirect(response.status):
-                redirect_addr = response.redirect_address
-                if redirect_addr:
-                    return await self.send_raw(redirect_addr, request.raw_message)
-
             return response
         except TimeoutError as e:
             raise TimeoutError(f"Request timeout: {hostname}") from e

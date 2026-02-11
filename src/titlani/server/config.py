@@ -39,7 +39,11 @@ class ServerConfig:
     # Sender verification ("off" | "optional" | "required")
     verification_mode: str = "off"
     verification_cache_path: Path | None = None
+    verification_cache_ttl: int = 604800  # 7 days
     verification_probe_timeout: float = 10.0
+
+    # Per-mailbox identity certificates directory
+    identity_cert_dir: Path | None = None
 
     # At-rest encryption
     encryption_enable: bool = False
@@ -84,7 +88,11 @@ class ServerConfig:
         config.verification_mode = verification.get("mode", "off")
         if "cache_path" in verification:
             config.verification_cache_path = Path(verification["cache_path"])
+        config.verification_cache_ttl = int(verification.get("cache_ttl", 604800))
         config.verification_probe_timeout = float(verification.get("probe_timeout", 10.0))
+
+        if "identity_cert_dir" in server:
+            config.identity_cert_dir = Path(server["identity_cert_dir"])
 
         encryption = data.get("encryption", {})
         config.encryption_enable = encryption.get("enable", False)
