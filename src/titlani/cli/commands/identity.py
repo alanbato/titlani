@@ -1,10 +1,12 @@
 """Identity certificate commands."""
 
 import os
+import shutil
 import stat
 from pathlib import Path
 
 import typer
+from platformdirs import user_config_path
 from rich.console import Console
 
 from ...cli import display_identity_info
@@ -13,6 +15,7 @@ from ...identity.certificate import (
     generate_identity_cert,
     normalize_fingerprint,
 )
+from ...server.config import ServerConfig
 
 console = Console()
 error_console = Console(stderr=True, style="bold red")
@@ -45,6 +48,16 @@ def identity_generate(
         False,
         "--with-encryption-key",
         help="Also generate an X25519 keypair for at-rest encryption",
+    ),
+    install: bool = typer.Option(
+        False,
+        "--install",
+        help="Copy the .pem to the server's identity cert directory for GMAP auth",
+    ),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        help="Server config path (default: ~/.config/titlani/server.toml)",
     ),
 ) -> None:
     """Generate a Misfin identity certificate."""
@@ -103,6 +116,35 @@ def identity_generate(
             os.chmod(enc_key_file, stat.S_IRUSR | stat.S_IWUSR)
             console.print(f"[green]Encryption private key:[/] {enc_key_file}")
             console.print(f"[green]Encryption public key:[/]  {enc_pub_file}")
+
+        if install:
+            config_path = config or (user_config_path("titlani") / "server.toml")
+            if not config_path.exists():
+                error_console.print(
+                    f"Server config not found: {config_path}\n"
+                    "Run [bold]titlani init[/] first or specify "
+                    "--config."
+                )
+                raise typer.Exit(code=1)
+
+            server_config = ServerConfig.from_toml(config_path)
+            dest_dir = server_config.identity_cert_dir or server_config.mailbox_dir
+            dest_dir.mkdir(parents=True, exist_ok=True)
+
+            dest_pem = dest_dir / f"{mailbox}.pem"
+            shutil.copy2(cert_file, dest_pem)
+            console.print(f"\n[green]Installed:[/] {dest_pem}")
+
+            # Ensure mailbox subdirectory exists
+            mailbox_subdir = server_config.mailbox_dir / mailbox
+            mailbox_subdir.mkdir(parents=True, exist_ok=True)
+            console.print(f"[green]Mailbox dir:[/] {mailbox_subdir}")
+
+            console.print(
+                f"\n[dim]Share with user:[/]\n"
+                f"  Certificate: {cert_file}\n"
+                f"  Private key: {key_file}"
+            )
 
     except Exception as e:
         error_console.print(f"Error generating certificate: {e}")

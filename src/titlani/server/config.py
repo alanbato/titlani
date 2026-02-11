@@ -6,7 +6,7 @@ from pathlib import Path
 
 from platformdirs import user_data_path
 
-from ..protocol.constants import DEFAULT_PORT
+from ..protocol.constants import DEFAULT_GMAP_PORT, DEFAULT_PORT
 
 
 def default_mailbox_dir() -> Path:
@@ -51,6 +51,7 @@ class ServerConfig:
 
     # GMAP (Gemini Mailbox Access Protocol)
     gmap_enable: bool = False
+    gmap_port: int = DEFAULT_GMAP_PORT
 
     # Auto-reply
     auto_reply_enable: bool = False
@@ -108,6 +109,7 @@ class ServerConfig:
 
         gmap = data.get("gmap", {})
         config.gmap_enable = gmap.get("enable", False)
+        config.gmap_port = int(gmap.get("port", DEFAULT_GMAP_PORT))
 
         auto_reply = data.get("auto_reply", {})
         config.auto_reply_enable = auto_reply.get("enable", False)
@@ -122,5 +124,7 @@ class ServerConfig:
             raise ValueError(f"Key file not found: {self.keyfile}")
         if self.port < 1 or self.port > 65535:
             raise ValueError(f"Invalid port: {self.port}")
+        if self.gmap_port < 1 or self.gmap_port > 65535:
+            raise ValueError(f"Invalid GMAP port: {self.gmap_port}")
         if self.verification_mode not in ("off", "optional", "required"):
             raise ValueError(f"Invalid verification mode: {self.verification_mode!r}")

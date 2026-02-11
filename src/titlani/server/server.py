@@ -38,7 +38,7 @@ from .protocol import MisfinServerProtocol
 _gmap_available = True
 try:
     from ..gmap.handler import GmapHandler
-    from .dispatcher import ProtocolDispatcher
+    from ..gmap.protocol import GeminiServerProtocol
 except ImportError:
     _gmap_available = False
 
@@ -243,33 +243,17 @@ async def start_server(
             mode=config.verification_mode,
         )
 
-    # Build protocol factory
-    if config.gmap_enable and _gmap_available:
-        gmap_handler = GmapHandler(
-            mailbox_dir=config.mailbox_dir,
-            hostname=config.hostname,
+    # Misfin protocol factory (main port, no client certs)
+    def misfin_protocol_factory() -> MisfinServerProtocol:
+        return MisfinServerProtocol(
+            message_handler=handler.handle_message,
+            middleware=middleware,
         )
 
-        def protocol_factory() -> ProtocolDispatcher:
-            return ProtocolDispatcher(
-                misfin_handler=handler.handle_message,
-                gmap_handler=gmap_handler.handle_request,
-                middleware=middleware,
-            )
-
-        logger.info("gmap_enabled")
-    else:
-
-        def protocol_factory() -> MisfinServerProtocol:  # type: ignore[misc]
-            return MisfinServerProtocol(
-                message_handler=handler.handle_message,
-                middleware=middleware,
-            )
-
-    # Start server
+    # Start server(s)
     loop = asyncio.get_running_loop()
-    server = await loop.create_server(
-        protocol_factory,
+    misfin_server = await loop.create_server(
+        misfin_protocol_factory,
         host=config.host,
         port=config.port,
         ssl=ssl_context,
@@ -287,9 +271,63 @@ async def start_server(
         mailbox_dir=str(config.mailbox_dir),
     )
 
+    gmap_server = None
+    if config.gmap_enable and _gmap_available:
+        # Collect per-mailbox .pem paths for client_ca_certs
+        client_ca_certs = [str(p) for p in cert_dir.glob("*.pem") if p.is_file()]
+
+        if not client_ca_certs:
+            logger.warning(
+                "gmap_no_client_certs",
+                cert_dir=str(cert_dir),
+                message=(
+                    "GMAP enabled but no per-mailbox .pem files found. "
+                    "Use 'titlani identity generate --install' to set up "
+                    "user certificates."
+                ),
+            )
+
+        gmap_ssl_context = create_server_context(
+            certfile=str(certfile),
+            keyfile=str(keyfile),
+            request_client_cert=True,
+            client_ca_certs=client_ca_certs or None,
+        )
+
+        gmap_handler = GmapHandler(
+            mailbox_dir=config.mailbox_dir,
+            hostname=config.hostname,
+            recipient_fps=recipient_fps,
+        )
+
+        def gmap_protocol_factory() -> GeminiServerProtocol:
+            return GeminiServerProtocol(
+                request_handler=gmap_handler.handle_request,
+            )
+
+        gmap_server = await loop.create_server(
+            gmap_protocol_factory,
+            host=config.host,
+            port=config.gmap_port,
+            ssl=gmap_ssl_context,
+        )
+
+        logger.info(
+            "gmap_enabled",
+            port=config.gmap_port,
+            client_certs=len(client_ca_certs),
+        )
+
     try:
-        async with server:
-            await server.serve_forever()
+        if gmap_server is not None:
+            async with misfin_server, gmap_server:
+                await asyncio.gather(
+                    misfin_server.serve_forever(),
+                    gmap_server.serve_forever(),
+                )
+        else:
+            async with misfin_server:
+                await misfin_server.serve_forever()
     except asyncio.CancelledError:
         pass
     finally:

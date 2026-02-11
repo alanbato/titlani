@@ -59,6 +59,11 @@ def serve(
         file_okay=False,
         resolve_path=True,
     ),
+    gmap_port: int | None = typer.Option(
+        None,
+        "--gmap-port",
+        help="GMAP server port (overrides config)",
+    ),
     log_level: str = typer.Option(
         "INFO",
         "--log-level",
@@ -95,6 +100,8 @@ def serve(
                 config.keyfile = key
             if mailbox_dir is not None:
                 config.mailbox_dir = mailbox_dir
+            if gmap_port is not None:
+                config.gmap_port = gmap_port
 
             display_server_config(config, console)
             await start_server(config, log_level=log_level)

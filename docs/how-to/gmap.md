@@ -1,6 +1,6 @@
 # GMAP (Remote Mailbox Access)
 
-GMAP (Gemini Mailbox Access Protocol) lets clients retrieve and manage mailbox contents remotely over Gemini protocol. When enabled, the Titlani server serves mailbox messages alongside the normal Misfin mail transport — both on the same port.
+GMAP (Gemini Mailbox Access Protocol) lets clients retrieve and manage mailbox contents remotely over Gemini protocol. When enabled, the Titlani server runs GMAP on a separate port (default 1960) alongside the normal Misfin mail transport (port 1958).
 
 ## Enable GMAP
 
@@ -15,18 +15,49 @@ mailbox_dir = "/var/lib/titlani/mailboxes"
 
 [gmap]
 enable = true
+port = 1960
 ```
 
-That's it. The server now accepts both Misfin (`misfin://`) and Gemini (`gemini://`) requests on port 1958.
+The server now listens on two ports: Misfin on 1958 and GMAP on 1960.
+
+## Why a Separate Port?
+
+Misfin and GMAP have conflicting TLS requirements:
+
+- **Misfin** must NOT request client certificates — random senders present self-signed certs that would fail OpenSSL 3.x verification during the TLS handshake.
+- **GMAP** must request client certificates — this is how mailbox owners authenticate.
+
+These conflicting requirements mean they cannot share a TLS context, so GMAP runs on its own port. The GMAP specification explicitly allows any port.
 
 ## How It Works
 
-When a client connects, the server inspects the first bytes to detect the protocol:
+The server creates two TLS contexts:
 
-- `misfin://` — handled as a normal Misfin mail delivery
-- `gemini://` — routed to the GMAP handler
+- **Misfin port (1958)**: `request_client_cert=False` — accepts mail from anyone
+- **GMAP port (1960)**: `request_client_cert=True` — requires client certificate for authentication
 
-GMAP clients authenticate using the same Misfin identity certificate they use for sending mail. The server extracts the mailbox name from the client certificate's USER_ID field and grants access only to that mailbox.
+GMAP clients authenticate using their Misfin identity certificate. The server verifies the certificate fingerprint against registered per-mailbox identity certificates and grants access only to the matching mailbox.
+
+## Setting Up Users for GMAP
+
+Use `--install` when generating identity certificates to register them for GMAP authentication:
+
+```bash
+# Generate cert and install it on the server
+titlani identity generate alice mail.example.com \
+    --blurb "Alice" \
+    --install
+
+# Or specify a custom server config
+titlani identity generate alice mail.example.com \
+    --install --config /etc/titlani/server.toml
+```
+
+The `--install` flag:
+
+1. Copies `alice.pem` to the server's identity cert directory (used as a trusted CA cert for TLS and for fingerprint verification)
+2. Creates the mailbox subdirectory if it doesn't exist
+3. Prints the cert and key paths to share with the user
 
 ## Client Certificate Setup
 
@@ -35,15 +66,11 @@ GMAP clients must present their Misfin identity certificate during the TLS hands
 - **USER_ID** — the mailbox name (e.g., `alice`)
 - **SAN DNS** — the server hostname (e.g., `mail.example.com`)
 
-This is the same certificate format used for sending mail:
-
-```bash
-titlani identity generate alice mail.example.com --blurb "Alice"
-```
+The certificate fingerprint must match the one registered on the server (installed via `--install`).
 
 ## Available Routes
 
-All routes use Gemini URLs on the Misfin port (default 1958).
+All routes use Gemini URLs on the GMAP port (default 1960).
 
 ### Retrieve a Message
 
@@ -209,6 +236,7 @@ identity_keyfile = "identity.key"
 
 [gmap]
 enable = true
+port = 1960
 
 [encryption]
 enable = true
@@ -222,7 +250,7 @@ refill_rate = 2.0
 
 ## Security Considerations
 
-- **Authentication**: GMAP authenticates clients via their Misfin identity certificate. The mailbox name extracted from the certificate's USER_ID determines which mailbox the client can access. There is no cross-mailbox access.
+- **Fingerprint verification**: GMAP verifies that the client certificate fingerprint matches the registered identity for the mailbox. Simply creating a cert with the same `USER_ID` is not sufficient — the cert must be the exact one installed on the server.
+- **Separate TLS contexts**: The GMAP port uses `request_client_cert=True` with per-mailbox `.pem` files as trusted CAs, while the Misfin port uses `request_client_cert=False` for untrusted senders.
 - **Path traversal**: Mailbox names are validated with the same regex and symlink-safe path resolution used by the Misfin handler.
-- **Rate limiting**: When enabled, the existing rate limiting middleware applies to both Misfin and GMAP requests.
-- **TLS**: GMAP runs over the same TLS connection as Misfin. Client certificates are extracted at the application layer after the TLS handshake (the same approach used for Misfin sender identity).
+- **Graceful degradation**: If no per-mailbox certs are installed, GMAP still works but fingerprint verification is skipped (with a warning at server startup).

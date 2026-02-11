@@ -90,6 +90,7 @@ titlani serve [OPTIONS]
 | `--cert` | — | — | Path to TLS certificate |
 | `--key` | — | — | Path to TLS private key |
 | `--mailbox-dir` | — | `mailboxes` | Directory for mailbox storage |
+| `--gmap-port` | — | — | GMAP server port (overrides config) |
 | `--log-level` | `-l` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 
 CLI options override values from the config file.
@@ -126,6 +127,8 @@ titlani identity generate <mailbox> <hostname> [OPTIONS]
 | `--valid-days` | — | `365` | Certificate validity in days |
 | `--key-size` | — | `2048` | RSA key size in bits |
 | `--with-encryption-key` | — | `false` | Also generate X25519 keypair for at-rest encryption |
+| `--install` | — | `false` | Copy `.pem` to server's identity cert directory for GMAP auth |
+| `--config` | — | `~/.config/titlani/server.toml` | Server config path (used with `--install`) |
 
 **Output files:**
 
@@ -134,12 +137,22 @@ titlani identity generate <mailbox> <hostname> [OPTIONS]
 - `<mailbox>.enc.pub` — Encryption public key (only with `--with-encryption-key`)
 - `<mailbox>.enc.key` — Encryption private key, mode 600 (only with `--with-encryption-key`)
 
-**Example:**
+When `--install` is used, the `.pem` is also copied to the server's identity cert directory (from `identity_cert_dir` in server config, or `mailbox_dir` as fallback) and the mailbox subdirectory is created.
+
+**Examples:**
 
 ```bash
 titlani identity generate alice example.com \
     --blurb "Alice Smith" --output-dir ./certs \
     --with-encryption-key
+
+# Generate and install for GMAP authentication
+titlani identity generate alice example.com \
+    --blurb "Alice Smith" --install
+
+# With custom server config
+titlani identity generate alice example.com \
+    --install --config /etc/titlani/server.toml
 ```
 
 ---

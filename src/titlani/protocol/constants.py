@@ -1,6 +1,7 @@
 """Misfin(C) protocol constants."""
 
 DEFAULT_PORT = 1958
+DEFAULT_GMAP_PORT = 1960
 
 MAX_HEADER_SIZE = 1024
 MAX_CONTENT_LENGTH = 16384

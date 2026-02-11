@@ -107,9 +107,10 @@ GMAP (Gemini Mailbox Access Protocol) for remote mailbox access. See [GMAP](../h
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enable` | bool | `false` | Enable GMAP on the same port as Misfin |
+| `enable` | bool | `false` | Enable GMAP on a separate port |
+| `port` | int | `1960` | GMAP listen port (must be 1-65535) |
 
-When enabled, the server accepts both `misfin://` and `gemini://` requests on the same port. Clients authenticate with their Misfin identity certificate to access their mailbox remotely.
+When enabled, the server starts a second TLS listener on the GMAP port that requests client certificates. Clients authenticate with their Misfin identity certificate (fingerprint-verified) to access their mailbox remotely.
 
 ## `[auto_reply]`
 
@@ -157,6 +158,7 @@ key_dir = "/etc/titlani/keys"
 
 [gmap]
 enable = true
+port = 1960
 
 [auto_reply]
 enable = true
@@ -168,6 +170,7 @@ interval = 86400
 `ServerConfig.validate()` checks:
 
 - Port is between 1 and 65535
+- GMAP port is between 1 and 65535
 - Certificate files exist if specified
 - Key files exist if specified
 - Verification mode is one of `"off"`, `"optional"`, or `"required"`

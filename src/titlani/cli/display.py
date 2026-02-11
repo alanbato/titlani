@@ -166,6 +166,15 @@ def display_server_config(config: ServerConfig, console: Console) -> None:
     else:
         table.add_row("Access Control", "[dim]Disabled[/]")
 
+    # GMAP
+    if config.gmap_enable:
+        table.add_row(
+            "GMAP",
+            f"[green]Enabled[/] (port {config.gmap_port})",
+        )
+    else:
+        table.add_row("GMAP", "[dim]Disabled[/]")
+
     # Verification
     mode_styles = {
         "off": "[dim]Disabled[/]",

@@ -16,7 +16,13 @@ from titlani.gmap.handler import (
     GmapHandler,
     parse_gemini_request,
 )
-from titlani.identity.certificate import MisfinIdentity
+from titlani.identity.certificate import (
+    MisfinIdentity,
+    generate_identity_cert,
+    normalize_fingerprint,
+)
+
+ALICE_FP = "aabbccdd0011223344556677889900aabbccdd0011223344556677889900aabb"
 
 
 def _create_gemmail(mailbox_path: Path, msgid: str, content: str = "") -> Path:
@@ -278,3 +284,102 @@ class TestGmapHandlerRoutes:
         # Only the message after 12:30 should appear
         assert "20260211T120000Z" not in body
         assert "20260211T130000Z" in body
+
+
+class TestGmapFingerprintVerification:
+    """Test fingerprint-based authentication for GMAP."""
+
+    @pytest.fixture
+    def setup_with_cert(self, tmp_path):
+        """Create a mailbox and real identity cert for fingerprint tests."""
+        from cryptography.x509 import load_pem_x509_certificate
+        from tlacacoca import get_certificate_fingerprint
+
+        mailbox_path = tmp_path / "alice"
+        mailbox_path.mkdir()
+        _create_gemmail(mailbox_path, "20260211T120000Z")
+
+        # Generate a real identity cert
+        cert_pem, _ = generate_identity_cert(
+            mailbox="alice",
+            hostname="example.com",
+        )
+        cert = load_pem_x509_certificate(cert_pem)
+        fp = normalize_fingerprint(get_certificate_fingerprint(cert))
+
+        return tmp_path, cert, fp
+
+    def _patch_identity(self):
+        return patch(
+            "titlani.gmap.handler.extract_identity",
+            return_value=MisfinIdentity(mailbox="alice", hostname="example.com"),
+        )
+
+    async def test_fingerprint_match_allows_access(self, setup_with_cert):
+        tmp_path, cert, fp = setup_with_cert
+        handler = GmapHandler(
+            mailbox_dir=tmp_path,
+            hostname="example.com",
+            recipient_fps={"alice": fp},
+        )
+        req = _make_request("/tag/", client_cert=cert)
+
+        with self._patch_identity():
+            resp = await handler.handle_request(req)
+        assert resp.status == SUCCESS
+
+    async def test_fingerprint_mismatch_rejected(self, setup_with_cert):
+        tmp_path, cert, _ = setup_with_cert
+        handler = GmapHandler(
+            mailbox_dir=tmp_path,
+            hostname="example.com",
+            recipient_fps={"alice": "wrong" + "ff" * 31},
+        )
+        req = _make_request("/tag/", client_cert=cert)
+
+        with self._patch_identity():
+            resp = await handler.handle_request(req)
+        assert resp.status == CERT_NOT_AUTHORIZED
+        assert "mismatch" in resp.meta.lower()
+
+    async def test_missing_registered_fingerprint_rejected(self, setup_with_cert):
+        tmp_path, cert, _ = setup_with_cert
+        # Fingerprints exist for other mailboxes but not alice
+        handler = GmapHandler(
+            mailbox_dir=tmp_path,
+            hostname="example.com",
+            recipient_fps={"bob": "aa" * 32},
+        )
+        req = _make_request("/tag/", client_cert=cert)
+
+        with self._patch_identity():
+            resp = await handler.handle_request(req)
+        assert resp.status == CERT_NOT_AUTHORIZED
+        assert "registered" in resp.meta.lower()
+
+    async def test_empty_recipient_fps_skips_verification(self, setup_with_cert):
+        tmp_path, cert, _ = setup_with_cert
+        # Empty dict = no fingerprint verification (backward compat)
+        handler = GmapHandler(
+            mailbox_dir=tmp_path,
+            hostname="example.com",
+            recipient_fps={},
+        )
+        req = _make_request("/tag/", client_cert=cert)
+
+        with self._patch_identity():
+            resp = await handler.handle_request(req)
+        assert resp.status == SUCCESS
+
+    async def test_none_recipient_fps_skips_verification(self, setup_with_cert):
+        tmp_path, cert, _ = setup_with_cert
+        handler = GmapHandler(
+            mailbox_dir=tmp_path,
+            hostname="example.com",
+            recipient_fps=None,
+        )
+        req = _make_request("/tag/", client_cert=cert)
+
+        with self._patch_identity():
+            resp = await handler.handle_request(req)
+        assert resp.status == SUCCESS

@@ -6,7 +6,7 @@ import typer
 from platformdirs import user_config_path
 from rich.console import Console
 
-from ...protocol.constants import DEFAULT_PORT
+from ...protocol.constants import DEFAULT_GMAP_PORT, DEFAULT_PORT
 from ...server.config import default_mailbox_dir
 
 console = Console()
@@ -21,6 +21,7 @@ def _build_server_toml(
     port: int,
     mailbox_dir: str,
     gmap_enable: bool,
+    gmap_port: int,
     verification_enable: bool,
     verification_mode: str,
     encryption_enable: bool,
@@ -54,10 +55,11 @@ def _build_server_toml(
         "",
         "[encryption]",
         f"enable = {str(encryption_enable).lower()}",
-        "# key_dir = \"keys\"",
+        '# key_dir = "keys"',
         "",
         "[gmap]",
         f"enable = {str(gmap_enable).lower()}",
+        f"port = {gmap_port}",
         "",
         "[auto_reply]",
         f"enable = {str(auto_reply_enable).lower()}",
@@ -84,9 +86,7 @@ def _build_server_toml(
         f"enable = {str(access_control_enable).lower()}",
     ]
     if access_control_enable:
-        lines.append(
-            f"default_allow = {str(access_control_default_allow).lower()}"
-        )
+        lines.append(f"default_allow = {str(access_control_default_allow).lower()}")
     else:
         lines.append("# default_allow = true")
     lines += [
@@ -98,10 +98,7 @@ def _build_server_toml(
 
 
 def _build_client_toml(server_config_path: Path) -> str:
-    return (
-        "[mail]\n"
-        f'server_config = "{server_config_path}"\n'
-    )
+    return f'[mail]\nserver_config = "{server_config_path}"\n'
 
 
 def init(
@@ -129,8 +126,7 @@ def init(
         if existing:
             names = ", ".join(p.name for p in existing)
             error_console.print(
-                f"Config files already exist: {names}\n"
-                "Use --force to overwrite."
+                f"Config files already exist: {names}\nUse --force to overwrite."
             )
             raise typer.Exit(code=1)
 
@@ -138,9 +134,7 @@ def init(
     console.print("\n[bold]Step 1: Essentials[/]\n")
     hostname = typer.prompt("Hostname for mail routing", default="localhost")
     port = typer.prompt("Port", default=DEFAULT_PORT, type=int)
-    mailbox_dir = typer.prompt(
-        "Mailbox directory", default=str(default_mailbox_dir())
-    )
+    mailbox_dir = typer.prompt("Mailbox directory", default=str(default_mailbox_dir()))
 
     # Step 2: Feature toggles
     console.print("\n[bold]Step 2: Feature toggles[/]\n")
@@ -162,14 +156,22 @@ def init(
     rate_limit_refill_rate = 1.0
     access_control_default_allow = True
 
-    has_details = any([
-        verification_enable,
-        auto_reply_enable,
-        rate_limit_enable,
-        access_control_enable,
-    ])
+    gmap_port = DEFAULT_GMAP_PORT
+
+    has_details = any(
+        [
+            gmap_enable,
+            verification_enable,
+            auto_reply_enable,
+            rate_limit_enable,
+            access_control_enable,
+        ]
+    )
     if has_details:
         console.print("\n[bold]Step 3: Feature details[/]\n")
+
+    if gmap_enable:
+        gmap_port = typer.prompt("GMAP port", default=DEFAULT_GMAP_PORT, type=int)
 
     if verification_enable:
         verification_mode = typer.prompt(
@@ -177,9 +179,7 @@ def init(
             default="optional",
         )
         if verification_mode not in ("optional", "required"):
-            error_console.print(
-                f"Invalid verification mode: {verification_mode!r}"
-            )
+            error_console.print(f"Invalid verification mode: {verification_mode!r}")
             raise typer.Exit(code=1)
 
     if auto_reply_enable:
@@ -188,12 +188,8 @@ def init(
         )
 
     if rate_limit_enable:
-        rate_limit_capacity = typer.prompt(
-            "Rate limit capacity", default=10, type=int
-        )
-        rate_limit_refill_rate = typer.prompt(
-            "Refill rate", default=1.0, type=float
-        )
+        rate_limit_capacity = typer.prompt("Rate limit capacity", default=10, type=int)
+        rate_limit_refill_rate = typer.prompt("Refill rate", default=1.0, type=float)
 
     if access_control_enable:
         access_control_default_allow = typer.confirm(
@@ -206,6 +202,7 @@ def init(
         port=port,
         mailbox_dir=mailbox_dir,
         gmap_enable=gmap_enable,
+        gmap_port=gmap_port,
         verification_enable=verification_enable,
         verification_mode=verification_mode,
         encryption_enable=encryption_enable,
@@ -225,7 +222,4 @@ def init(
 
     console.print(f"\n[green]Wrote:[/] {server_path}")
     console.print(f"[green]Wrote:[/] {client_path}")
-    console.print(
-        "\nStart your server with: "
-        "[bold]titlani serve[/]"
-    )
+    console.print("\nStart your server with: [bold]titlani serve[/]")

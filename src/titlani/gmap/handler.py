@@ -11,9 +11,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from cryptography import x509
-from tlacacoca import get_logger
+from tlacacoca import get_certificate_fingerprint, get_logger
 
-from ..identity.certificate import extract_identity
+from ..identity.certificate import extract_identity, normalize_fingerprint
 from .mailbox import GmapMailbox, _valid_tag
 
 logger = get_logger(__name__)
@@ -66,9 +66,33 @@ class GmapHandler:
         self,
         mailbox_dir: Path,
         hostname: str,
+        recipient_fps: dict[str, str] | None = None,
     ) -> None:
         self.mailbox_dir = mailbox_dir
         self.hostname = hostname
+        self.recipient_fps = recipient_fps or {}
+
+    def _verify_fingerprint(
+        self,
+        mailbox: str,
+        client_cert: x509.Certificate,
+    ) -> GeminiResponse | None:
+        """Verify client cert fingerprint. Returns error response or None."""
+        if not self.recipient_fps:
+            return None
+        expected_fp = self.recipient_fps.get(mailbox)
+        if expected_fp is None:
+            return GeminiResponse(
+                CERT_NOT_AUTHORIZED,
+                "No registered identity for mailbox",
+            )
+        client_fp = normalize_fingerprint(get_certificate_fingerprint(client_cert))
+        if client_fp != expected_fp:
+            return GeminiResponse(
+                CERT_NOT_AUTHORIZED,
+                "Certificate fingerprint mismatch",
+            )
+        return None
 
     async def handle_request(self, request: GeminiRequest) -> GeminiResponse:
         # Verify client certificate
@@ -94,6 +118,11 @@ class GmapHandler:
             or not re.fullmatch(r"[a-zA-Z0-9._-]+", mailbox)
         ):
             return GeminiResponse(CERT_NOT_AUTHORIZED, "Invalid mailbox name")
+
+        # Verify client cert fingerprint against registered identity
+        fp_error = self._verify_fingerprint(mailbox, request.client_cert)
+        if fp_error is not None:
+            return fp_error
 
         mailbox_path = self.mailbox_dir / mailbox
         try:

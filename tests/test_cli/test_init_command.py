@@ -10,37 +10,42 @@ from titlani.server.config import ServerConfig, default_mailbox_dir
 runner = CliRunner()
 
 # Default wizard input: accept all defaults, decline all features
-DEFAULT_INPUT = "\n".join([
-    "",        # hostname: localhost
-    "",        # port: 1958
-    "",        # mailbox_dir: default
-    "n",       # GMAP
-    "n",       # verification
-    "n",       # encryption
-    "n",       # auto-reply
-    "n",       # rate limiting
-    "n",       # access control
-    "",
-])
+DEFAULT_INPUT = "\n".join(
+    [
+        "",  # hostname: localhost
+        "",  # port: 1958
+        "",  # mailbox_dir: default
+        "n",  # GMAP
+        "n",  # verification
+        "n",  # encryption
+        "n",  # auto-reply
+        "n",  # rate limiting
+        "n",  # access control
+        "",
+    ]
+)
 
 # Enable all features with details
-ALL_FEATURES_INPUT = "\n".join([
-    "mail.example.com",  # hostname
-    "1959",              # port
-    "/tmp/mail",         # mailbox_dir
-    "y",                 # GMAP
-    "y",                 # verification
-    "y",                 # encryption
-    "y",                 # auto-reply
-    "y",                 # rate limiting
-    "y",                 # access control
-    "required",          # verification mode
-    "3600",              # auto-reply interval
-    "20",                # rate limit capacity
-    "2.0",               # refill rate
-    "y",                 # default allow
-    "",
-])
+ALL_FEATURES_INPUT = "\n".join(
+    [
+        "mail.example.com",  # hostname
+        "1959",  # port
+        "/tmp/mail",  # mailbox_dir
+        "y",  # GMAP
+        "y",  # verification
+        "y",  # encryption
+        "y",  # auto-reply
+        "y",  # rate limiting
+        "y",  # access control
+        "",  # GMAP port: default 1960
+        "required",  # verification mode
+        "3600",  # auto-reply interval
+        "20",  # rate limit capacity
+        "2.0",  # refill rate
+        "y",  # default allow
+        "",
+    ]
+)
 
 
 class TestInitWizard:
@@ -92,6 +97,7 @@ class TestInitWizard:
         assert config.port == 1959
         assert config.mailbox_dir == Path("/tmp/mail")
         assert config.gmap_enable is True
+        assert config.gmap_port == 1960
         assert config.verification_mode == "required"
         assert config.encryption_enable is True
         assert config.auto_reply_enable is True
