@@ -20,6 +20,16 @@ allow_list = []
 deny_list = []
 default_allow = true
 
+[verification]
+# Sender verification mode: "off", "optional", or "required"
+# mode = "optional"
+# cache_ttl = 604800
+# probe_timeout = 10.0
+
+[gmap]
+# Enable GMAP (Gemini Mailbox Access Protocol) for remote mailbox access.
+# enable = false
+
 [encryption]
 # Enable at-rest encryption for stored messages.
 # Each mailbox needs an X25519 keypair: <mailbox>.enc.key / <mailbox>.enc.pub

@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 import typer
+from platformdirs import user_config_path
 from rich.console import Console
 
 from ...cli import display_server_config
@@ -12,6 +13,8 @@ from ...server.server import start_server
 
 console = Console()
 error_console = Console(stderr=True, style="bold red")
+
+DEFAULT_SERVER_CONFIG = user_config_path("titlani") / "server.toml"
 
 
 def serve(
@@ -69,8 +72,15 @@ def serve(
         try:
             if config_file:
                 config = ServerConfig.from_toml(config_file)
+            elif DEFAULT_SERVER_CONFIG.exists():
+                config = ServerConfig.from_toml(DEFAULT_SERVER_CONFIG)
             else:
-                config = ServerConfig()
+                error_console.print(
+                    "No config file found.\n"
+                    f"Expected: {DEFAULT_SERVER_CONFIG}\n\n"
+                    "Run [bold]titlani init[/] to generate one."
+                )
+                raise typer.Exit(code=1)
 
             # CLI overrides
             if host is not None:

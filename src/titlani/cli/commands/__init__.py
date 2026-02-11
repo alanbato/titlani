@@ -3,6 +3,7 @@
 import typer
 
 from .identity import identity_app
+from .init import init
 from .mail import mail_app
 from .send import send
 from .serve import serve
@@ -17,6 +18,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+app.command()(init)
 app.command()(send)
 app.command()(serve)
 app.command()(version)

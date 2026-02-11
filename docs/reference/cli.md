@@ -2,6 +2,41 @@
 
 Titlani provides the `titlani` command-line tool for sending messages, running servers, and managing identities.
 
+## `init`
+
+Interactive wizard to generate server and client config files.
+
+```bash
+titlani init [OPTIONS]
+```
+
+**Options:**
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--output-dir` | `-o` | `~/.config/titlani` | Directory to write config files to |
+| `--force` | `-f` | `false` | Overwrite existing config files |
+
+The wizard walks through three steps:
+
+1. **Essentials** — hostname, port, mailbox directory
+2. **Feature toggles** — GMAP, sender verification, encryption, auto-reply, rate limiting, access control
+3. **Feature details** — follow-up prompts for each enabled feature
+
+**Output files:**
+
+- `server.toml` — Server configuration
+- `config.toml` — Client configuration (references `server.toml`)
+
+**Example:**
+
+```bash
+titlani init
+titlani init --output-dir ./config --force
+```
+
+---
+
 ## `send`
 
 Send a Misfin message.
