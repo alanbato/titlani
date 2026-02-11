@@ -35,6 +35,13 @@ from .config import ServerConfig
 from .handler import FileMailboxHandler
 from .protocol import MisfinServerProtocol
 
+_gmap_available = True
+try:
+    from ..gmap.handler import GmapHandler
+    from .dispatcher import ProtocolDispatcher
+except ImportError:
+    _gmap_available = False
+
 logger = get_logger(__name__)
 
 
@@ -231,13 +238,32 @@ async def start_server(
             mode=config.verification_mode,
         )
 
+    # Build protocol factory
+    if config.gmap_enable and _gmap_available:
+        gmap_handler = GmapHandler(
+            mailbox_dir=config.mailbox_dir,
+            hostname=config.hostname,
+        )
+
+        def protocol_factory() -> ProtocolDispatcher:
+            return ProtocolDispatcher(
+                misfin_handler=handler.handle_message,
+                gmap_handler=gmap_handler.handle_request,
+                middleware=middleware,
+            )
+
+        logger.info("gmap_enabled")
+    else:
+        def protocol_factory() -> MisfinServerProtocol:  # type: ignore[misc]
+            return MisfinServerProtocol(
+                message_handler=handler.handle_message,
+                middleware=middleware,
+            )
+
     # Start server
     loop = asyncio.get_running_loop()
     server = await loop.create_server(
-        lambda: MisfinServerProtocol(
-            message_handler=handler.handle_message,
-            middleware=middleware,
-        ),
+        protocol_factory,
         host=config.host,
         port=config.port,
         ssl=ssl_context,
@@ -251,6 +277,7 @@ async def start_server(
         rate_limiting=config.rate_limit_enable,
         access_control=config.access_control_enable,
         encryption=config.encryption_enable,
+        gmap=config.gmap_enable,
         mailbox_dir=str(config.mailbox_dir),
     )
 

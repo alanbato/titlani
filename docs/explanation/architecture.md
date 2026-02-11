@@ -15,6 +15,8 @@ graph TB
     Encryption["Encryption (encryption/)"]
     Tlacacoca["tlacacoca"]
 
+    GMAP["GMAP (gmap/)"]
+
     CLI --> Client
     CLI --> Server
     CLI --> Identity
@@ -27,7 +29,10 @@ graph TB
     Server --> Protocol
     Server --> Content
     Server --> Encryption
+    Server --> GMAP
     Server --> Tlacacoca
+    GMAP --> Content
+    GMAP --> Identity
     Protocol --> Content
     Identity --> Tlacacoca
 ```
@@ -83,7 +88,16 @@ Async Misfin server:
 - **`config.py`** — `ServerConfig` — TOML configuration with validation
 - **`handler.py`** — `MessageHandler` (abstract) and `FileMailboxHandler`
 - **`protocol.py`** — `MisfinServerProtocol` — two-phase buffering state machine
+- **`dispatcher.py`** — `ProtocolDispatcher` — multi-protocol multiplexer (detects `misfin://` vs `gemini://`)
 - **`server.py`** — `start_server()` — server lifecycle with auto-cert and middleware
+
+### GMAP (`gmap/`)
+
+Gemini Mailbox Access Protocol for remote mailbox retrieval:
+
+- **`mailbox.py`** — `GmapMailbox` — per-mailbox JSON index (`.gmap.json`) with tag management and filesystem sync
+- **`handler.py`** — `GmapHandler` — request routing and client certificate authentication, plus `GeminiRequest`/`GeminiResponse` types
+- **`protocol.py`** — `GeminiServerProtocol` — single-phase `asyncio.Protocol` for Gemini requests
 
 ### CLI (`cli/` and `__main__.py`)
 
@@ -117,6 +131,20 @@ Typer-based CLI providing `send`, `serve`, `identity generate/info`, `tofu list/
 8. **Handler** stores as `.gemmail` (plaintext) or `.gemmail.enc` (encrypted) file
 9. **Server** sends response with status code and fingerprint
 
+## Data Flow: GMAP Remote Access
+
+1. **Client** connects to server with TLS client certificate
+2. **Dispatcher** receives first bytes, detects `gemini://` prefix
+3. **Dispatcher** delegates to `GeminiServerProtocol`
+4. **Gemini Protocol** buffers until CRLF (single phase, no body)
+5. **Gemini Protocol** parses Gemini URL into path, query, hostname
+6. **Gemini Protocol** extracts client certificate from TLS transport
+7. **Handler** authenticates: `extract_identity(cert)` extracts mailbox name
+8. **Handler** loads `GmapMailbox` index, syncs with filesystem
+9. **Handler** routes by path (`/msgid/`, `/tag/`, `/untag/`, `/delete`)
+10. **Mailbox** performs the operation (list, tag, retrieve, delete)
+11. **Handler** returns `GeminiResponse` with Gemini status code and body
+
 ## Design Decisions
 
 **Why asyncio.Protocol instead of streams?**
@@ -127,3 +155,12 @@ Misfin identity certificates need USER_ID for the mailbox name, which isn't a st
 
 **Why a custom fingerprint format?**
 Misfin(C) uses plain lowercase hex fingerprints, while tlacacoca uses the `sha256:hexdigest` format. The `normalize_fingerprint()` bridge function handles this at every boundary point.
+
+**Why protocol detection instead of separate ports for GMAP?**
+The GMAP specification says servers should use port 1958 by default. Running both Misfin and GMAP on the same port simplifies deployment (one port to open in firewalls) and matches the spec. Protocol detection is cheap — the first 9 bytes reliably distinguish `gemini://` from `misfin://`.
+
+**Why a JSON index for GMAP tags?**
+GMAP requires per-message tags (Inbox, Unread, Trash, etc.), but the existing file-based mailbox storage has no metadata layer. A `.gmap.json` file per mailbox is simple, human-readable, and sufficient for typical mailbox sizes. For very large mailboxes (10k+ messages), a future migration to SQLite would be straightforward since the `GmapMailbox` API abstracts the storage.
+
+**Why lazy filesystem sync?**
+Messages delivered via Misfin are written directly as `.gemmail` files without updating the GMAP index. The GMAP handler syncs the index with the filesystem on each request, discovering new messages and removing deleted ones. This avoids tight coupling between the Misfin delivery path and the GMAP indexing layer — the Misfin handler doesn't need to know about GMAP at all.

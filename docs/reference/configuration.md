@@ -101,6 +101,16 @@ When enabled, the server scans for `<mailbox>.enc.pub` files in `key_dir`. Mailb
 !!! note
     The server loads only public keys for encryption. Private keys (`.enc.key`) remain user-owned and are used only by the CLI for decryption.
 
+## `[gmap]`
+
+GMAP (Gemini Mailbox Access Protocol) for remote mailbox access. See [GMAP](../how-to/gmap.md) for details.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enable` | bool | `false` | Enable GMAP on the same port as Misfin |
+
+When enabled, the server accepts both `misfin://` and `gemini://` requests on the same port. Clients authenticate with their Misfin identity certificate to access their mailbox remotely.
+
 ## Full Example
 
 ```toml
@@ -133,6 +143,9 @@ probe_timeout = 5.0
 [encryption]
 enable = true
 key_dir = "/etc/titlani/keys"
+
+[gmap]
+enable = true
 ```
 
 ## Validation

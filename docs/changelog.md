@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added GMAP (Gemini Mailbox Access Protocol) support for remote mailbox access over Gemini protocol on the same port as Misfin
+    - Message retrieval (`/msgid/<id>`), tag management (`/tag/`, `/untag/`), and deletion (`/delete`)
+    - Per-mailbox JSON index (`.gmap.json`) with auto-tagging (Inbox, Unread) and filesystem sync
+    - Protocol multiplexer detects `gemini://` vs `misfin://` from first bytes
+    - Client certificate authentication using Misfin identity certs
+    - Enable with `[gmap] enable = true` in server config
 - `mail list` no longer requires a directory argument — auto-detects from client config (`~/.config/titlani/config.toml`) and defaults `--mailbox` to `$USER`
 - `mail read` accepts a message index (e.g., `titlani mail read 2`) in addition to file paths, using the same ordering as `mail list`
 - `mail list` output now includes a `#` index column for easy reference

@@ -148,6 +148,35 @@ Misfin identity certificates use RSA keys for TLS. At-rest encryption uses a sep
 
 See [At-Rest Encryption How-To](../how-to/at-rest-encryption.md) for setup instructions.
 
+## GMAP Authentication
+
+When GMAP is enabled, the server accepts Gemini protocol requests for remote mailbox access. GMAP authenticates clients using Misfin identity certificates:
+
+1. **Certificate extraction** — After the TLS handshake, the server extracts the client certificate from the transport (via `getpeercert`)
+2. **Identity extraction** — The server reads the USER_ID (mailbox) and SAN DNS (hostname) from the certificate
+3. **Mailbox authorization** — The client can only access the mailbox matching their certificate's USER_ID
+
+### Why Application-Layer Auth
+
+GMAP uses the same TLS context as Misfin (`request_client_cert=False`), extracting client certificates at the application layer rather than requiring them at the TLS level. This avoids the OpenSSL 3.x `CERT_OPTIONAL` issue described above. If no client certificate is presented, the GMAP handler returns Gemini status 60 (Client Certificate Required).
+
+### Path Traversal Protection
+
+The mailbox name extracted from the client certificate is validated with the same protections used by the Misfin handler:
+
+- Regex validation: `[a-zA-Z0-9._-]+` only
+- Blocks null bytes, slashes, backslashes, and `..` sequences
+- Symlink-safe path resolution to verify the resolved path is inside the mailbox directory
+
+### What GMAP Auth Proves
+
+| Property | Verified? |
+|----------|-----------|
+| Client holds a valid Misfin identity certificate | Yes |
+| Client can only access their own mailbox | Yes |
+| Certificate was issued by a trusted authority | **No** (self-signed certificates) |
+| Client is who they claim to be | **No** (same TOFU limitation as Misfin) |
+
 ## DoS Protections
 
 The protocol includes built-in limits to prevent denial-of-service attacks:
@@ -158,8 +187,10 @@ The protocol includes built-in limits to prevent denial-of-service attacks:
 | Maximum message body | 16384 bytes | `MAX_CONTENT_LENGTH` |
 | Maximum metadata line | 1024 bytes | `MAX_METADATA_LINE_SIZE` |
 | Maximum response size | 2048 bytes | `MAX_RESPONSE_SIZE` |
+| Maximum Gemini request | 1024 bytes | `MAX_GEMINI_REQUEST_SIZE` |
 | Request timeout | 30 seconds | `REQUEST_TIMEOUT` |
 | Maximum redirects | 5 hops | `MAX_REDIRECTS` |
+| Protocol detection timeout | 30 seconds | `REQUEST_TIMEOUT` |
 
 The server protocol enforces these limits during the two-phase buffering process, closing connections that exceed them.
 

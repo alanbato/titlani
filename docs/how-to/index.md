@@ -60,6 +60,14 @@ Practical recipes for common tasks. Each guide focuses on a single goal and assu
 
     [:octicons-arrow-right-24: Guide](at-rest-encryption.md)
 
+-   :material-mailbox:{ .lg .middle } **GMAP (Remote Mailbox Access)**
+
+    ---
+
+    Enable remote mailbox access over Gemini protocol with tag management.
+
+    [:octicons-arrow-right-24: Guide](gmap.md)
+
 -   :material-puzzle:{ .lg .middle } **Custom Message Handler**
 
     ---

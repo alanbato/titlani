@@ -49,6 +49,9 @@ class ServerConfig:
     encryption_enable: bool = False
     encryption_key_dir: Path | None = None
 
+    # GMAP (Gemini Mailbox Access Protocol)
+    gmap_enable: bool = False
+
     @classmethod
     def from_toml(cls, path: Path) -> "ServerConfig":
         with open(path, "rb") as f:
@@ -98,6 +101,9 @@ class ServerConfig:
         config.encryption_enable = encryption.get("enable", False)
         if "key_dir" in encryption:
             config.encryption_key_dir = Path(encryption["key_dir"])
+
+        gmap = data.get("gmap", {})
+        config.gmap_enable = gmap.get("enable", False)
 
         return config
 

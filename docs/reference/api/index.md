@@ -44,4 +44,12 @@ Auto-generated documentation for Titlani's Python API.
 
     [:octicons-arrow-right-24: Identity API](identity.md)
 
+-   :material-mailbox:{ .lg .middle } **GMAP**
+
+    ---
+
+    `GmapHandler`, `GmapMailbox`, `GeminiServerProtocol`, `ProtocolDispatcher` — Remote mailbox access over Gemini.
+
+    [:octicons-arrow-right-24: GMAP API](gmap.md)
+
 </div>

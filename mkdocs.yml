@@ -118,6 +118,7 @@ nav:
       - Access Control: how-to/access-control.md
       - Sender Verification: how-to/sender-verification.md
       - At-Rest Encryption: how-to/at-rest-encryption.md
+      - GMAP (Remote Mailbox Access): how-to/gmap.md
       - Custom Message Handler: how-to/custom-message-handler.md
       - Compose Gemmail: how-to/compose-gemmail.md
   - Reference:
@@ -134,6 +135,7 @@ nav:
           - Content: reference/api/content.md
           - Identity: reference/api/identity.md
           - Encryption: reference/api/encryption.md
+          - GMAP: reference/api/gmap.md
   - Explanation:
       - explanation/index.md
       - Misfin Protocol: explanation/misfin-protocol.md
