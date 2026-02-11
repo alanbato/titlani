@@ -106,8 +106,13 @@ class GmapMailbox:
         modified = False
         known_files = {e.filename for e in self.messages.values()}
 
-        # Discover .gemmail and .gemmail.enc files
-        for pattern in ("*.gemmail", "*.gemmail.enc"):
+        # Discover .gemmail and .gemmail.enc files (including .new unread)
+        for pattern in (
+            "*.gemmail",
+            "*.gemmail.new",
+            "*.gemmail.enc",
+            "*.gemmail.enc.new",
+        ):
             for path in self.mailbox_path.glob(pattern):
                 if path.name.startswith("."):
                     continue
@@ -116,6 +121,13 @@ class GmapMailbox:
 
                 msgid = _filename_to_msgid(path.name)
                 if not msgid:
+                    continue
+
+                if msgid in self.messages:
+                    # File was renamed (e.g. .new removed on read);
+                    # update filename but preserve existing tags.
+                    self.messages[msgid].filename = path.name
+                    modified = True
                     continue
 
                 ts = _parse_timestamp_from_msgid(msgid)
@@ -182,11 +194,11 @@ class GmapMailbox:
         return filepath.read_bytes()
 
     def is_encrypted(self, msgid: str) -> bool:
-        """Check if a message is encrypted (.gemmail.enc)."""
+        """Check if a message is encrypted (.gemmail.enc or .gemmail.enc.new)."""
         entry = self.messages.get(msgid)
         if entry is None:
             return False
-        return entry.filename.endswith(".enc")
+        return ".enc" in entry.filename
 
     def add_tag(self, msgid: str, tag: str) -> bool:
         """Add a tag to a message. Returns True if changed."""
@@ -232,13 +244,15 @@ def _filename_to_msgid(filename: str) -> str | None:
     """Extract message ID from filename.
 
     '20260211T143052Z.gemmail' -> '20260211T143052Z'
+    '20260211T143052Z.gemmail.new' -> '20260211T143052Z'
     '20260211T143052Z.gemmail.enc' -> '20260211T143052Z'
+    '20260211T143052Z.gemmail.enc.new' -> '20260211T143052Z'
     """
     stem = filename
-    if stem.endswith(".gemmail.enc"):
-        stem = stem[: -len(".gemmail.enc")]
-    elif stem.endswith(".gemmail"):
-        stem = stem[: -len(".gemmail")]
+    for suffix in (".gemmail.enc.new", ".gemmail.enc", ".gemmail.new", ".gemmail"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
     else:
         return None
 

@@ -29,3 +29,11 @@ default_allow = true
 # Mailboxes without key files store messages as plaintext.
 enable = false
 # key_dir = "keys"  # Directory containing .enc.pub files (default: mailbox_dir)
+
+[auto_reply]
+# Enable server-side auto-reply.
+# Place a .auto-reply file in a mailbox directory to enable for that mailbox.
+# The file contents become the reply body. Subject will be "[Auto-Reply]".
+# Loop prevention: messages with "[Auto-Reply]" in the subject are ignored.
+enable = false
+interval = 86400  # Minimum seconds between auto-replies to the same sender

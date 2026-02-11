@@ -85,14 +85,24 @@ def mail_read(
     ),
 ) -> None:
     """Read and display a gemmail message."""
+    from ...cli.mailbox import is_new_message
+
     gemmail_file = _resolve_message_path(message, mailbox_dir, mailbox)
 
     try:
-        if gemmail_file.suffix == ".enc":
+        if ".enc" in gemmail_file.suffixes:
             msg = read_encrypted_message(gemmail_file, encryption_key, error_console)
         else:
             msg = GemmailMessage.from_bytes(gemmail_file.read_bytes())
         display_gemmail_message(msg, console)
+
+        # Mark as read by removing .new suffix
+        if is_new_message(gemmail_file):
+            read_name = gemmail_file.name.removesuffix(".new")
+            try:
+                gemmail_file.rename(gemmail_file.parent / read_name)
+            except OSError:
+                pass
     except ValueError as e:
         error_console.print(f"Invalid gemmail format: {e}")
         raise typer.Exit(code=1) from e
@@ -241,7 +251,7 @@ def mail_reply(
 
     # Read original message
     try:
-        if gemmail_file.suffix == ".enc":
+        if ".enc" in gemmail_file.suffixes:
             original = read_encrypted_message(gemmail_file, encryption_key, error_console)
         else:
             original = GemmailMessage.from_bytes(gemmail_file.read_bytes())
@@ -333,6 +343,105 @@ def mail_reply(
             raise typer.Exit(code=1) from e
 
     asyncio.run(_reply())
+
+
+@mail_app.command("block")
+def mail_block(
+    address: str = typer.Argument(..., help="Sender address to block (mailbox@hostname)"),
+    mailbox_dir: Path | None = typer.Option(
+        None, "--mailbox-dir", "-d", help="Mailbox directory"
+    ),
+    mailbox: str | None = typer.Option(
+        None, "--mailbox", "-m", help="Mailbox name (defaults to $USER)"
+    ),
+) -> None:
+    """Block a sender address from delivering mail."""
+    if "@" not in address:
+        error_console.print(f"Invalid address format: {address}")
+        raise typer.Exit(code=1)
+
+    address = address.strip().lower()
+    mbox_path = _resolve_mailbox_path(mailbox_dir, mailbox)
+    blocked_file = mbox_path / ".blocked"
+
+    existing = _read_blocked_set(blocked_file)
+    if address in existing:
+        console.print(f"[yellow]{address} is already blocked[/]")
+        return
+
+    existing.add(address)
+    _write_blocked_set(blocked_file, existing)
+    console.print(f"[green]Blocked {address}[/]")
+
+
+@mail_app.command("unblock")
+def mail_unblock(
+    address: str = typer.Argument(..., help="Sender address to unblock"),
+    mailbox_dir: Path | None = typer.Option(
+        None, "--mailbox-dir", "-d", help="Mailbox directory"
+    ),
+    mailbox: str | None = typer.Option(
+        None, "--mailbox", "-m", help="Mailbox name (defaults to $USER)"
+    ),
+) -> None:
+    """Remove a sender address from the block list."""
+    address = address.strip().lower()
+    mbox_path = _resolve_mailbox_path(mailbox_dir, mailbox)
+    blocked_file = mbox_path / ".blocked"
+
+    if not blocked_file.exists():
+        console.print(f"[yellow]{address} was not blocked[/]")
+        return
+
+    existing = _read_blocked_set(blocked_file)
+    if address not in existing:
+        console.print(f"[yellow]{address} was not blocked[/]")
+        return
+
+    existing.discard(address)
+    if existing:
+        _write_blocked_set(blocked_file, existing)
+    else:
+        blocked_file.unlink()
+    console.print(f"[green]Unblocked {address}[/]")
+
+
+def _resolve_mailbox_path(mailbox_dir: Path | None, mailbox: str | None) -> Path:
+    """Resolve to the mailbox subdirectory path."""
+    resolved_dir = resolve_mailbox_dir(mailbox_dir, error_console)
+    resolved_mailbox = resolve_mailbox_name(mailbox)
+    if not resolved_mailbox:
+        error_console.print("Could not determine mailbox name")
+        raise typer.Exit(code=1)
+    mbox_path = resolved_dir / resolved_mailbox
+    if not mbox_path.is_dir():
+        error_console.print(f"Mailbox not found: {resolved_mailbox}")
+        raise typer.Exit(code=1)
+    return mbox_path
+
+
+def _read_blocked_set(blocked_file: Path) -> set[str]:
+    """Read the .blocked file into a set of lowercase addresses."""
+    if not blocked_file.exists():
+        return set()
+    try:
+        return {
+            line.strip().lower()
+            for line in blocked_file.read_text().splitlines()
+            if line.strip()
+        }
+    except (OSError, UnicodeDecodeError) as e:
+        error_console.print(f"Error reading .blocked file: {e}")
+        raise typer.Exit(code=1) from e
+
+
+def _write_blocked_set(blocked_file: Path, addresses: set[str]) -> None:
+    """Write a set of addresses to the .blocked file."""
+    try:
+        blocked_file.write_text("\n".join(sorted(addresses)) + "\n")
+    except OSError as e:
+        error_console.print(f"Error writing .blocked file: {e}")
+        raise typer.Exit(code=1) from e
 
 
 def _resolve_message_path(

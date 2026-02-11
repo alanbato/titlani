@@ -26,8 +26,15 @@ class TestFilenameMsgid:
     def test_gemmail(self):
         assert _filename_to_msgid("20260211T143052Z.gemmail") == "20260211T143052Z"
 
+    def test_gemmail_new(self):
+        assert _filename_to_msgid("20260211T143052Z.gemmail.new") == "20260211T143052Z"
+
     def test_gemmail_enc(self):
         assert _filename_to_msgid("20260211T143052Z.gemmail.enc") == "20260211T143052Z"
+
+    def test_gemmail_enc_new(self):
+        result = _filename_to_msgid("20260211T143052Z.gemmail.enc.new")
+        assert result == "20260211T143052Z"
 
     def test_invalid_extension(self):
         assert _filename_to_msgid("test.txt") is None
@@ -140,6 +147,62 @@ class TestGmapMailboxSync:
 
         assert modified is True
         assert len(mbox.messages) == 0
+
+    def test_sync_discovers_unread_files(self, tmp_path):
+        _create_gemmail(tmp_path, "20260211T120000Z")
+        # Rename to .new to simulate server delivery
+        src = tmp_path / "20260211T120000Z.gemmail"
+        src.rename(tmp_path / "20260211T120000Z.gemmail.new")
+
+        mbox = GmapMailbox(tmp_path)
+        mbox.load()
+        mbox.sync_filesystem()
+
+        assert "20260211T120000Z" in mbox.messages
+        entry = mbox.messages["20260211T120000Z"]
+        assert "Inbox" in entry.tags
+        assert "Unread" in entry.tags
+
+    def test_sync_preserves_tags_after_rename(self, tmp_path):
+        """When CLI marks a .new message as read, GMAP should
+        update the filename but keep existing tags."""
+        # Simulate server delivery
+        _create_gemmail(tmp_path, "20260211T120000Z")
+        src = tmp_path / "20260211T120000Z.gemmail"
+        src.rename(tmp_path / "20260211T120000Z.gemmail.new")
+
+        mbox = GmapMailbox(tmp_path)
+        mbox.load()
+        mbox.sync_filesystem()
+
+        # User reads via GMAP → removes Unread tag
+        mbox.remove_tag("20260211T120000Z", "Unread")
+        mbox.add_tag("20260211T120000Z", "Important")
+        mbox.save()
+
+        # CLI reads → renames .new to .gemmail
+        new_path = tmp_path / "20260211T120000Z.gemmail.new"
+        new_path.rename(tmp_path / "20260211T120000Z.gemmail")
+
+        # Next GMAP sync should update filename but keep tags
+        mbox2 = GmapMailbox(tmp_path)
+        mbox2.load()
+        mbox2.sync_filesystem()
+
+        entry = mbox2.messages["20260211T120000Z"]
+        assert entry.filename == "20260211T120000Z.gemmail"
+        assert "Important" in entry.tags
+        assert "Unread" not in entry.tags
+
+    def test_sync_discovers_encrypted_unread_files(self, tmp_path):
+        (tmp_path / "20260211T120000Z.gemmail.enc.new").write_bytes(b"encrypted")
+
+        mbox = GmapMailbox(tmp_path)
+        mbox.load()
+        mbox.sync_filesystem()
+
+        assert "20260211T120000Z" in mbox.messages
+        assert mbox.is_encrypted("20260211T120000Z")
 
     def test_sync_discovers_encrypted_files(self, tmp_path):
         (tmp_path / "20260211T120000Z.gemmail.enc").write_bytes(b"encrypted")

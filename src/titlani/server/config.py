@@ -52,6 +52,10 @@ class ServerConfig:
     # GMAP (Gemini Mailbox Access Protocol)
     gmap_enable: bool = False
 
+    # Auto-reply
+    auto_reply_enable: bool = False
+    auto_reply_interval: int = 86400  # seconds between replies to same sender
+
     @classmethod
     def from_toml(cls, path: Path) -> "ServerConfig":
         with open(path, "rb") as f:
@@ -104,6 +108,10 @@ class ServerConfig:
 
         gmap = data.get("gmap", {})
         config.gmap_enable = gmap.get("enable", False)
+
+        auto_reply = data.get("auto_reply", {})
+        config.auto_reply_enable = auto_reply.get("enable", False)
+        config.auto_reply_interval = int(auto_reply.get("interval", 86400))
 
         return config
 

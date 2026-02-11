@@ -209,6 +209,11 @@ async def start_server(
         recipient_fingerprint_fn=_get_recipient_fingerprint,
         identity_cert_fingerprint=id_fingerprint,
         encryption_manager=encryption_manager,
+        auto_reply_enabled=config.auto_reply_enable,
+        auto_reply_interval=config.auto_reply_interval,
+        identity_certfile=identity_certfile,
+        identity_keyfile=identity_keyfile,
+        port=config.port,
     )
 
     # Wrap with verification if mode is not "off"
@@ -254,6 +259,7 @@ async def start_server(
 
         logger.info("gmap_enabled")
     else:
+
         def protocol_factory() -> MisfinServerProtocol:  # type: ignore[misc]
             return MisfinServerProtocol(
                 message_handler=handler.handle_message,

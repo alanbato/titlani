@@ -156,7 +156,7 @@ async def test_client_server_e2e(
 
         assert response.status == StatusCode.SUCCESS
 
-        files = list((mailbox_dir / "alice").glob("*.gemmail"))
+        files = list((mailbox_dir / "alice").glob("*.gemmail.new"))
         assert len(files) == 1
 
         msg = GemmailMessage.from_bytes(files[0].read_bytes())

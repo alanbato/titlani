@@ -63,6 +63,25 @@ retry_after = 60
         assert config.host == "localhost"
         assert config.port == DEFAULT_PORT
 
+    def test_auto_reply_config(self, tmp_path):
+        toml_content = """
+[auto_reply]
+enable = true
+interval = 3600
+"""
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text(toml_content)
+        config = ServerConfig.from_toml(toml_file)
+        assert config.auto_reply_enable is True
+        assert config.auto_reply_interval == 3600
+
+    def test_auto_reply_defaults(self, tmp_path):
+        toml_file = tmp_path / "empty.toml"
+        toml_file.write_text("")
+        config = ServerConfig.from_toml(toml_file)
+        assert config.auto_reply_enable is False
+        assert config.auto_reply_interval == 86400
+
 
 class TestMailboxDirPermissions:
     def test_mailbox_dir_created_with_700(self, tmp_path):

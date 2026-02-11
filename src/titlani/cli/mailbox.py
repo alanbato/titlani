@@ -61,15 +61,18 @@ def list_messages(
         search_paths = sorted(p for p in mailbox_dir.iterdir() if p.is_dir())
 
     for mbox_path in search_paths:
-        gemmail_files = sorted(mbox_path.glob("*.gemmail"), reverse=True)
-        enc_files = sorted(mbox_path.glob("*.gemmail.enc"), reverse=True)
-        all_files = sorted(
-            [*gemmail_files, *enc_files],
-            key=lambda p: p.name,
-            reverse=True,
-        )
+        all_files: list[Path] = []
+        for pattern in (
+            "*.gemmail",
+            "*.gemmail.new",
+            "*.gemmail.enc",
+            "*.gemmail.enc.new",
+        ):
+            all_files.extend(mbox_path.glob(pattern))
+        all_files.sort(key=lambda p: p.name, reverse=True)
+
         for gemmail_file in all_files:
-            if gemmail_file.suffix == ".enc":
+            if _is_encrypted(gemmail_file):
                 messages.append((gemmail_file, None))
             else:
                 try:
@@ -81,3 +84,13 @@ def list_messages(
                     )
 
     return messages
+
+
+def is_new_message(filepath: Path) -> bool:
+    """Check if a message file has the .new unread marker."""
+    return filepath.name.endswith(".new")
+
+
+def _is_encrypted(filepath: Path) -> bool:
+    """Check if a message file is encrypted (.gemmail.enc or .gemmail.enc.new)."""
+    return ".enc" in filepath.suffixes

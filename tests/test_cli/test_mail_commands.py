@@ -282,6 +282,158 @@ class TestClientConfig:
         assert config.mailbox_dir == Path("/my/mail")
 
 
+class TestMailBlock:
+    def test_block_creates_file(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        result = runner.invoke(
+            app,
+            ["mail", "block", "spam@evil.com", "-d", str(tmp_path), "-m", "alice"],
+        )
+        assert result.exit_code == 0
+        assert "Blocked" in result.output
+        blocked = (mbox / ".blocked").read_text()
+        assert "spam@evil.com" in blocked
+
+    def test_block_duplicate_is_noop(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        (mbox / ".blocked").write_text("spam@evil.com\n")
+        result = runner.invoke(
+            app,
+            ["mail", "block", "spam@evil.com", "-d", str(tmp_path), "-m", "alice"],
+        )
+        assert result.exit_code == 0
+        assert "already blocked" in result.output
+
+    def test_block_invalid_address(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        result = runner.invoke(
+            app,
+            ["mail", "block", "not-an-address", "-d", str(tmp_path), "-m", "alice"],
+        )
+        assert result.exit_code == 1
+        assert "Invalid address" in result.output
+
+    def test_unblock_removes_address(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        (mbox / ".blocked").write_text("spam@evil.com\nother@bad.com\n")
+        result = runner.invoke(
+            app,
+            ["mail", "unblock", "spam@evil.com", "-d", str(tmp_path), "-m", "alice"],
+        )
+        assert result.exit_code == 0
+        assert "Unblocked" in result.output
+        blocked = (mbox / ".blocked").read_text()
+        assert "spam@evil.com" not in blocked
+        assert "other@bad.com" in blocked
+
+    def test_unblock_last_address_removes_file(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        (mbox / ".blocked").write_text("spam@evil.com\n")
+        result = runner.invoke(
+            app,
+            ["mail", "unblock", "spam@evil.com", "-d", str(tmp_path), "-m", "alice"],
+        )
+        assert result.exit_code == 0
+        assert not (mbox / ".blocked").exists()
+
+    def test_unblock_nonexistent_is_noop(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        result = runner.invoke(
+            app,
+            ["mail", "unblock", "nobody@here.com", "-d", str(tmp_path), "-m", "alice"],
+        )
+        assert result.exit_code == 0
+        assert "was not blocked" in result.output
+
+
+class TestUnreadTracking:
+    def test_new_messages_show_new_indicator(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        _create_gemmail(
+            mbox / "20250110T153045Z.gemmail.new",
+            sender="bob@other.com",
+            subject="Unread",
+        )
+        _create_gemmail(
+            mbox / "20250109T100000Z.gemmail",
+            sender="carol@other.com",
+            subject="Already read",
+        )
+        result = runner.invoke(
+            app,
+            ["mail", "list", str(tmp_path), "-m", "alice"],
+        )
+        assert result.exit_code == 0
+        assert "NEW" in result.output
+        assert "1 new" in result.output
+
+    def test_read_removes_new_suffix(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        new_file = mbox / "20250110T153045Z.gemmail.new"
+        _create_gemmail(new_file, subject="Test")
+        assert new_file.exists()
+
+        result = runner.invoke(
+            app,
+            ["mail", "read", str(new_file)],
+        )
+        assert result.exit_code == 0
+        assert not new_file.exists()
+        assert (mbox / "20250110T153045Z.gemmail").exists()
+
+    def test_read_already_read_message(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        read_file = mbox / "20250110T153045Z.gemmail"
+        _create_gemmail(read_file, subject="Already read")
+
+        result = runner.invoke(
+            app,
+            ["mail", "read", str(read_file)],
+        )
+        assert result.exit_code == 0
+        assert read_file.exists()
+
+    def test_read_by_index_marks_as_read(self, tmp_path, monkeypatch):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        new_file = mbox / "20250110T153045Z.gemmail.new"
+        _create_gemmail(new_file, subject="Indexed message")
+        config_dir = tmp_path / "config" / "titlani"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.toml").write_text(f'[mail]\nmailbox_dir = "{tmp_path}"\n')
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("USER", "alice")
+
+        result = runner.invoke(app, ["mail", "read", "1"])
+        assert result.exit_code == 0
+        assert not new_file.exists()
+        assert (mbox / "20250110T153045Z.gemmail").exists()
+
+    def test_no_new_messages_no_count(self, tmp_path):
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        _create_gemmail(
+            mbox / "20250110T153045Z.gemmail",
+            subject="All read",
+        )
+        result = runner.invoke(
+            app,
+            ["mail", "list", str(tmp_path), "-m", "alice"],
+        )
+        assert result.exit_code == 0
+        # Title should be "Messages (1)" without "(X new)"
+        assert "new)" not in result.output
+
+
 class TestMailListDefaults:
     def _setup_mailbox(self, tmp_path, mailbox="alice"):
         mbox = tmp_path / mailbox

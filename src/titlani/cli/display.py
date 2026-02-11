@@ -275,11 +275,18 @@ def display_gemmail_list(
     console: Console,
 ) -> None:
     """Display a table of gemmail messages."""
+    from .mailbox import is_new_message
+
     if not messages:
         console.print("[yellow]No messages found.[/]")
         return
 
-    table = Table(title=f"Messages ({len(messages)})")
+    new_count = sum(1 for fp, _ in messages if is_new_message(fp))
+    title = f"Messages ({len(messages)})"
+    if new_count:
+        title += f" ({new_count} new)"
+
+    table = Table(title=title)
     table.add_column("#", style="bold", justify="right", width=4)
     table.add_column("Received", style="dim", width=18)
     table.add_column("From", style="cyan", width=30)
@@ -287,26 +294,40 @@ def display_gemmail_list(
 
     for idx, (filepath, msg) in enumerate(messages, start=1):
         # Parse timestamp from filename (e.g. 20260208T194757Z)
-        stem = filepath.stem
-        # Strip .gemmail from .gemmail.enc files
-        if stem.endswith(".gemmail"):
-            stem = stem[: -len(".gemmail")]
+        stem = _extract_timestamp_stem(filepath)
         try:
             dt = datetime.strptime(stem, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
             time_display = dt.strftime("%Y-%m-%d %H:%M")
         except ValueError:
             time_display = stem
 
+        is_new = is_new_message(filepath)
+
         if msg is None:
-            # Encrypted message
             sender = "[dim]encrypted[/]"
             subject = "[yellow][ENC][/]"
         else:
             sender = msg.senders[0].long_form if msg.senders else "[dim]anonymous[/]"
             subject = msg.subject or "[dim]no subject[/]"
+
+        if is_new:
+            subject = f"[bold green]NEW[/] {subject}"
+
         table.add_row(str(idx), time_display, sender, subject)
 
     console.print(table)
+
+
+def _extract_timestamp_stem(filepath: Path) -> str:
+    """Extract the timestamp portion from a gemmail filename.
+
+    Handles: 20260208T194757Z.gemmail, .gemmail.new, .gemmail.enc, .gemmail.enc.new
+    """
+    name = filepath.name
+    for suffix in (".gemmail.enc.new", ".gemmail.enc", ".gemmail.new", ".gemmail"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return filepath.stem
 
 
 def display_version_info(console: Console) -> None:

@@ -64,7 +64,7 @@ class TestHandlerEncryption:
 
         assert response.status == StatusCode.SUCCESS
 
-        enc_files = list((mailbox_dir / "alice").glob("*.gemmail.enc"))
+        enc_files = list((mailbox_dir / "alice").glob("*.gemmail.enc.new"))
         assert len(enc_files) == 1
 
         # User decrypts with private key (separate from server)
@@ -92,7 +92,7 @@ class TestHandlerEncryption:
 
         assert response.status == StatusCode.SUCCESS
 
-        plain_files = list((mailbox_dir / "alice").glob("*.gemmail"))
+        plain_files = list((mailbox_dir / "alice").glob("*.gemmail.new"))
         assert len(plain_files) == 1
         assert b"Hello!" in plain_files[0].read_bytes()
 
@@ -110,5 +110,5 @@ class TestHandlerEncryption:
 
         assert response.status == StatusCode.SUCCESS
 
-        plain_files = list((mailbox_dir / "alice").glob("*.gemmail"))
+        plain_files = list((mailbox_dir / "alice").glob("*.gemmail.new"))
         assert len(plain_files) == 1
