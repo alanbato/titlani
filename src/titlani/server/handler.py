@@ -79,7 +79,54 @@ class FileMailboxHandler(MessageHandler):
                 meta=self.identity_cert_fingerprint,
             )
 
-        # Sanitize mailbox name to prevent path traversal
+        result = self._validate_mailbox(request)
+        if isinstance(result, MisfinResponse):
+            return result
+        mailbox, mailbox_path = result
+
+        # Check sender against block list
+        senders = self._collect_senders(request)
+        blocked_sender = self._find_blocked_sender(mailbox_path, senders)
+        if blocked_sender is not None:
+            logger.info(
+                "sender_blocked",
+                mailbox=mailbox,
+                sender=blocked_sender.address,
+            )
+            return MisfinResponse(
+                status=StatusCode.UNAUTHORIZED_SENDER,
+                meta="Sender blocked",
+            )
+
+        # Validate and prepare message for storage
+        message_bytes = self._prepare_message(request)
+        if message_bytes is None:
+            logger.info(
+                "message_format_invalid",
+                mailbox=mailbox,
+                hostname=request.hostname,
+                content_length=request.content_length,
+            )
+            return MisfinResponse(
+                status=StatusCode.BAD_REQUEST,
+                meta="Invalid message format",
+            )
+
+        self._store_message(mailbox, mailbox_path, message_bytes)
+        self._maybe_trigger_auto_reply(mailbox, mailbox_path, message_bytes)
+
+        return MisfinResponse(
+            status=StatusCode.SUCCESS,
+            meta=self._get_recipient_fingerprint(request.mailbox),
+        )
+
+    def _validate_mailbox(
+        self, request: MisfinRequest
+    ) -> tuple[str, Path] | MisfinResponse:
+        """Validate mailbox name and resolve path.
+
+        Returns (mailbox, mailbox_path) on success, or MisfinResponse on error.
+        """
         mailbox = request.mailbox
         if (
             not mailbox
@@ -133,58 +180,33 @@ class FileMailboxHandler(MessageHandler):
                 meta="Mailbox does not exist",
             )
 
-        # Check sender against block list
-        senders = self._collect_senders(request)
-        blocked_sender = self._find_blocked_sender(mailbox_path, senders)
-        if blocked_sender is not None:
-            logger.info(
-                "sender_blocked",
-                mailbox=mailbox,
-                sender=blocked_sender.address,
-            )
-            return MisfinResponse(
-                status=StatusCode.UNAUTHORIZED_SENDER,
-                meta="Sender blocked",
-            )
+        return (mailbox, mailbox_path)
 
-        # Validate and prepare message for storage
-        message_bytes = self._prepare_message(request)
-        if message_bytes is None:
-            logger.info(
-                "message_format_invalid",
-                mailbox=mailbox,
-                hostname=request.hostname,
-                content_length=request.content_length,
-            )
-            return MisfinResponse(
-                status=StatusCode.BAD_REQUEST,
-                meta="Invalid message format",
-            )
+    def _maybe_trigger_auto_reply(
+        self,
+        mailbox: str,
+        mailbox_path: Path,
+        message_bytes: bytes,
+    ) -> None:
+        """Trigger auto-reply if configured and appropriate."""
+        if not self.auto_reply_enabled:
+            return
+        try:
+            parsed_msg = GemmailMessage.from_bytes(message_bytes)
+            if self._should_auto_reply(mailbox_path, parsed_msg):
+                asyncio.ensure_future(
+                    self._send_auto_reply(mailbox, mailbox_path, parsed_msg)
+                )
+        except Exception:
+            pass  # Never let auto-reply affect delivery
 
-        self._store_message(mailbox, mailbox_path, message_bytes)
-
-        # Trigger auto-reply if configured
-        if self.auto_reply_enabled:
-            try:
-                parsed_msg = GemmailMessage.from_bytes(message_bytes)
-                if self._should_auto_reply(mailbox_path, parsed_msg):
-                    asyncio.ensure_future(
-                        self._send_auto_reply(mailbox, mailbox_path, parsed_msg)
-                    )
-            except Exception:
-                pass  # Never let auto-reply affect delivery
-
-        # Get recipient fingerprint
-        fingerprint = ""
+    def _get_recipient_fingerprint(self, mailbox: str) -> str:
+        """Get the normalized fingerprint for a mailbox recipient."""
         if self.recipient_fingerprint_fn:
-            raw_fp = self.recipient_fingerprint_fn(request.mailbox)
+            raw_fp = self.recipient_fingerprint_fn(mailbox)
             if raw_fp:
-                fingerprint = normalize_fingerprint(raw_fp)
-
-        return MisfinResponse(
-            status=StatusCode.SUCCESS,
-            meta=fingerprint,
-        )
+                return normalize_fingerprint(raw_fp)
+        return ""
 
     def _collect_senders(self, request: MisfinRequest) -> list[MisfinAddress]:
         """Gather sender addresses from client cert and message metadata."""

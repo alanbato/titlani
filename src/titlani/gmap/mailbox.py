@@ -144,16 +144,22 @@ class GmapMailbox:
                 )
 
         # Remove entries whose files no longer exist
-        to_remove = []
-        for msgid, entry in self.messages.items():
-            if not (self.mailbox_path / entry.filename).exists():
-                to_remove.append(msgid)
-        for msgid in to_remove:
-            del self.messages[msgid]
+        if self._remove_stale_entries():
             modified = True
-            logger.debug("gmap_removed_missing", msgid=msgid)
 
         return modified
+
+    def _remove_stale_entries(self) -> bool:
+        """Remove index entries whose files no longer exist on disk."""
+        to_remove = [
+            msgid
+            for msgid, entry in self.messages.items()
+            if not (self.mailbox_path / entry.filename).exists()
+        ]
+        for msgid in to_remove:
+            del self.messages[msgid]
+            logger.debug("gmap_removed_missing", msgid=msgid)
+        return bool(to_remove)
 
     def list_all_msgids(self) -> list[str]:
         """Return all message IDs (excluding Trash)."""

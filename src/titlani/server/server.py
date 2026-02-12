@@ -104,19 +104,17 @@ def _setup_encryption(
     return manager
 
 
-async def start_server(
+def _ensure_certificates(
     config: ServerConfig,
-    log_level: str = "INFO",
-) -> None:
-    """Start a Misfin server."""
-    configure_logging(log_level=log_level)
-    config.validate()
+) -> tuple[Path, Path, Path, Path, str | None]:
+    """Ensure server and identity certificates exist, auto-generating if needed.
 
+    Returns (certfile, keyfile, identity_certfile, identity_keyfile, tmp_dir).
+    """
     certfile = config.certfile
     keyfile = config.keyfile
     tmp_dir = None
 
-    # Auto-generate server cert if none provided
     if certfile is None or keyfile is None:
         tmp_dir = tempfile.mkdtemp(prefix="titlani_")
         cert_pem, key_pem = generate_self_signed_cert(
@@ -132,7 +130,6 @@ async def start_server(
             hostname=config.hostname,
         )
 
-    # Auto-generate identity cert if none provided
     identity_certfile = config.identity_certfile
     identity_keyfile = config.identity_keyfile
     if identity_certfile is None or identity_keyfile is None:
@@ -153,18 +150,11 @@ async def start_server(
             hostname=config.hostname,
         )
 
-    # Create TLS context
-    # NOTE: request_client_cert=False because OpenSSL 3.x with CERT_OPTIONAL
-    # rejects self-signed client certs (no CA to verify against), causing
-    # silent TLS handshake failures. Sender identity is carried in the
-    # gemmail message metadata instead.
-    ssl_context = create_server_context(
-        certfile=str(certfile),
-        keyfile=str(keyfile),
-        request_client_cert=False,
-    )
+    return certfile, keyfile, identity_certfile, identity_keyfile, tmp_dir
 
-    # Build middleware chain
+
+def _build_middleware(config: ServerConfig) -> MiddlewareChain | None:
+    """Build middleware chain from server config."""
     middlewares = []
     if config.rate_limit_enable:
         rate_config = RateLimitConfig(
@@ -182,7 +172,122 @@ async def start_server(
         )
         middlewares.append(AccessControl(access_config))
 
-    middleware = MiddlewareChain(middlewares) if middlewares else None
+    return MiddlewareChain(middlewares) if middlewares else None
+
+
+def _setup_verification(
+    config: ServerConfig,
+    handler: FileMailboxHandler,
+    identity_certfile: Path,
+    identity_keyfile: Path,
+) -> tuple[FileMailboxHandler | VerifyingHandler, SenderVerificationCache | None]:
+    """Wrap handler with sender verification if configured."""
+    if config.verification_mode == "off":
+        return handler, None
+
+    cache_path = config.verification_cache_path
+    if cache_path is None:
+        cache_path = config.mailbox_dir / "verification_cache.db"
+    cache = SenderVerificationCache(cache_path, ttl_seconds=config.verification_cache_ttl)
+
+    verifier = ProbeVerifier(
+        cache=cache,
+        identity_cert=identity_certfile,
+        identity_key=identity_keyfile,
+        port=config.port,
+        timeout=config.verification_probe_timeout,
+    )
+    verified_handler = VerifyingHandler(
+        wrapped=handler,
+        verifier=verifier,
+        mode=VerificationMode(config.verification_mode),
+    )
+    logger.info(
+        "sender_verification_enabled",
+        mode=config.verification_mode,
+    )
+    return verified_handler, cache
+
+
+async def _start_gmap_server(
+    config: ServerConfig,
+    certfile: Path,
+    keyfile: Path,
+    cert_dir: Path,
+    recipient_fps: dict[str, str],
+) -> asyncio.Server | None:
+    """Start the GMAP server if enabled and available."""
+    if not config.gmap_enable or not _gmap_available:
+        return None
+
+    client_ca_certs = [str(p) for p in cert_dir.glob("*.pem") if p.is_file()]
+
+    if not client_ca_certs:
+        logger.warning(
+            "gmap_no_client_certs",
+            cert_dir=str(cert_dir),
+            message=(
+                "GMAP enabled but no per-mailbox .pem files found. "
+                "Use 'titlani identity generate --install' to set up "
+                "user certificates."
+            ),
+        )
+
+    gmap_ssl_context = create_server_context(
+        certfile=str(certfile),
+        keyfile=str(keyfile),
+        request_client_cert=True,
+        client_ca_certs=client_ca_certs or None,
+    )
+
+    gmap_handler = GmapHandler(
+        mailbox_dir=config.mailbox_dir,
+        hostname=config.hostname,
+        recipient_fps=recipient_fps,
+    )
+
+    loop = asyncio.get_running_loop()
+    server = await loop.create_server(
+        lambda: GeminiServerProtocol(
+            request_handler=gmap_handler.handle_request,
+        ),
+        host=config.host,
+        port=config.gmap_port,
+        ssl=gmap_ssl_context,
+    )
+
+    logger.info(
+        "gmap_enabled",
+        port=config.gmap_port,
+        client_certs=len(client_ca_certs),
+    )
+    return server
+
+
+async def start_server(
+    config: ServerConfig,
+    log_level: str = "INFO",
+) -> None:
+    """Start a Misfin server."""
+    configure_logging(log_level=log_level)
+    config.validate()
+
+    certfile, keyfile, identity_certfile, identity_keyfile, tmp_dir = (
+        _ensure_certificates(config)
+    )
+
+    # Create TLS context
+    # NOTE: request_client_cert=False because OpenSSL 3.x with CERT_OPTIONAL
+    # rejects self-signed client certs (no CA to verify against), causing
+    # silent TLS handshake failures. Sender identity is carried in the
+    # gemmail message metadata instead.
+    ssl_context = create_server_context(
+        certfile=str(certfile),
+        keyfile=str(keyfile),
+        request_client_cert=False,
+    )
+
+    middleware = _build_middleware(config)
 
     # Create mailbox directory with restrictive permissions
     config.mailbox_dir.mkdir(parents=True, exist_ok=True)
@@ -199,14 +304,11 @@ async def start_server(
     cert_dir = config.identity_cert_dir or config.mailbox_dir
     recipient_fps = _load_recipient_fingerprints(cert_dir, id_fingerprint)
 
-    def _get_recipient_fingerprint(mailbox: str) -> str | None:
-        return recipient_fps.get(mailbox, id_fingerprint)
-
     # Create base handler
-    handler: FileMailboxHandler | VerifyingHandler = FileMailboxHandler(
+    base_handler = FileMailboxHandler(
         mailbox_dir=config.mailbox_dir,
         hostname=config.hostname,
-        recipient_fingerprint_fn=_get_recipient_fingerprint,
+        recipient_fingerprint_fn=lambda m: recipient_fps.get(m, id_fingerprint),
         identity_cert_fingerprint=id_fingerprint,
         encryption_manager=encryption_manager,
         auto_reply_enabled=config.auto_reply_enable,
@@ -216,44 +318,17 @@ async def start_server(
         port=config.port,
     )
 
-    # Wrap with verification if mode is not "off"
-    cache: SenderVerificationCache | None = None
-    if config.verification_mode != "off":
-        cache_path = config.verification_cache_path
-        if cache_path is None:
-            cache_path = config.mailbox_dir / "verification_cache.db"
-        cache = SenderVerificationCache(
-            cache_path, ttl_seconds=config.verification_cache_ttl
-        )
+    handler, cache = _setup_verification(
+        config, base_handler, identity_certfile, identity_keyfile
+    )
 
-        verifier = ProbeVerifier(
-            cache=cache,
-            identity_cert=identity_certfile,
-            identity_key=identity_keyfile,
-            port=config.port,
-            timeout=config.verification_probe_timeout,
-        )
-        handler = VerifyingHandler(
-            wrapped=handler,
-            verifier=verifier,
-            mode=VerificationMode(config.verification_mode),
-        )
-        logger.info(
-            "sender_verification_enabled",
-            mode=config.verification_mode,
-        )
-
-    # Misfin protocol factory (main port, no client certs)
-    def misfin_protocol_factory() -> MisfinServerProtocol:
-        return MisfinServerProtocol(
-            message_handler=handler.handle_message,
-            middleware=middleware,
-        )
-
-    # Start server(s)
+    # Start Misfin server
     loop = asyncio.get_running_loop()
     misfin_server = await loop.create_server(
-        misfin_protocol_factory,
+        lambda: MisfinServerProtocol(
+            message_handler=handler.handle_message,
+            middleware=middleware,
+        ),
         host=config.host,
         port=config.port,
         ssl=ssl_context,
@@ -271,52 +346,9 @@ async def start_server(
         mailbox_dir=str(config.mailbox_dir),
     )
 
-    gmap_server = None
-    if config.gmap_enable and _gmap_available:
-        # Collect per-mailbox .pem paths for client_ca_certs
-        client_ca_certs = [str(p) for p in cert_dir.glob("*.pem") if p.is_file()]
-
-        if not client_ca_certs:
-            logger.warning(
-                "gmap_no_client_certs",
-                cert_dir=str(cert_dir),
-                message=(
-                    "GMAP enabled but no per-mailbox .pem files found. "
-                    "Use 'titlani identity generate --install' to set up "
-                    "user certificates."
-                ),
-            )
-
-        gmap_ssl_context = create_server_context(
-            certfile=str(certfile),
-            keyfile=str(keyfile),
-            request_client_cert=True,
-            client_ca_certs=client_ca_certs or None,
-        )
-
-        gmap_handler = GmapHandler(
-            mailbox_dir=config.mailbox_dir,
-            hostname=config.hostname,
-            recipient_fps=recipient_fps,
-        )
-
-        def gmap_protocol_factory() -> GeminiServerProtocol:
-            return GeminiServerProtocol(
-                request_handler=gmap_handler.handle_request,
-            )
-
-        gmap_server = await loop.create_server(
-            gmap_protocol_factory,
-            host=config.host,
-            port=config.gmap_port,
-            ssl=gmap_ssl_context,
-        )
-
-        logger.info(
-            "gmap_enabled",
-            port=config.gmap_port,
-            client_certs=len(client_ca_certs),
-        )
+    gmap_server = await _start_gmap_server(
+        config, certfile, keyfile, cert_dir, recipient_fps
+    )
 
     try:
         if gmap_server is not None:
