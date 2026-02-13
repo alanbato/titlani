@@ -89,19 +89,19 @@ def serve(
 
             # CLI overrides
             if host is not None:
-                config.host = host
+                config.server.host = host
             if port is not None:
-                config.port = port
+                config.server.port = port
             if hostname is not None:
-                config.hostname = hostname
+                config.server.hostname = hostname
             if cert is not None:
-                config.certfile = cert
+                config.server.certfile = cert
             if key is not None:
-                config.keyfile = key
+                config.server.keyfile = key
             if mailbox_dir is not None:
-                config.mailbox_dir = mailbox_dir
+                config.server.mailbox_dir = mailbox_dir
             if gmap_port is not None:
-                config.gmap_port = gmap_port
+                config.gmap.port = gmap_port
 
             display_server_config(config, console)
             await start_server(config, log_level=log_level)

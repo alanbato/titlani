@@ -128,7 +128,10 @@ def identity_generate(
                 raise typer.Exit(code=1)
 
             server_config = ServerConfig.from_toml(config_path)
-            dest_dir = server_config.identity_cert_dir or server_config.mailbox_dir
+            dest_dir = (
+                server_config.server.identity_cert_dir
+                or server_config.server.mailbox_dir
+            )
             dest_dir.mkdir(parents=True, exist_ok=True)
 
             dest_pem = dest_dir / f"{mailbox}.pem"
@@ -136,7 +139,7 @@ def identity_generate(
             console.print(f"\n[green]Installed:[/] {dest_pem}")
 
             # Ensure mailbox subdirectory exists
-            mailbox_subdir = server_config.mailbox_dir / mailbox
+            mailbox_subdir = server_config.server.mailbox_dir / mailbox
             mailbox_subdir.mkdir(parents=True, exist_ok=True)
             console.print(f"[green]Mailbox dir:[/] {mailbox_subdir}")
 

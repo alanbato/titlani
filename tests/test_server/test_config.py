@@ -5,29 +5,31 @@ import stat
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from titlani.protocol.constants import DEFAULT_PORT
-from titlani.server.config import ServerConfig
+from titlani.server.config import ServerConfig, ServerSection
 
 
 class TestServerConfig:
     def test_defaults(self):
         config = ServerConfig()
-        assert config.host == "localhost"
-        assert config.port == DEFAULT_PORT
-        assert config.hostname == "localhost"
-        assert config.certfile is None
-        assert config.keyfile is None
+        assert config.server.host == "localhost"
+        assert config.server.port == DEFAULT_PORT
+        assert config.server.hostname == "localhost"
+        assert config.server.certfile is None
+        assert config.server.keyfile is None
 
     def test_validate_invalid_port(self):
-        config = ServerConfig(port=0)
-        with pytest.raises(ValueError, match="Invalid port"):
-            config.validate()
+        with pytest.raises(ValidationError):
+            ServerConfig(server=ServerSection(port=0))
 
     def test_validate_missing_certfile(self, tmp_path):
-        config = ServerConfig(certfile=tmp_path / "nonexistent.pem")
+        config = ServerConfig(
+            server=ServerSection(certfile=tmp_path / "nonexistent.pem")
+        )
         with pytest.raises(ValueError, match="Certificate file not found"):
-            config.validate()
+            config.validate_files()
 
     def test_from_toml(self, tmp_path):
         toml_content = """
@@ -47,21 +49,21 @@ retry_after = 60
         toml_file.write_text(toml_content)
 
         config = ServerConfig.from_toml(toml_file)
-        assert config.host == "0.0.0.0"
-        assert config.port == 1958
-        assert config.hostname == "mail.example.com"
-        assert config.mailbox_dir == Path("my_mailboxes")
-        assert config.rate_limit_enable is True
-        assert config.rate_limit_capacity == 5.0
-        assert config.rate_limit_refill_rate == 0.5
-        assert config.rate_limit_retry_after == 60
+        assert config.server.host == "0.0.0.0"
+        assert config.server.port == 1958
+        assert config.server.hostname == "mail.example.com"
+        assert config.server.mailbox_dir == Path("my_mailboxes")
+        assert config.rate_limit.enable is True
+        assert config.rate_limit.capacity == 5.0
+        assert config.rate_limit.refill_rate == 0.5
+        assert config.rate_limit.retry_after == 60
 
     def test_from_toml_defaults(self, tmp_path):
         toml_file = tmp_path / "empty.toml"
         toml_file.write_text("")
         config = ServerConfig.from_toml(toml_file)
-        assert config.host == "localhost"
-        assert config.port == DEFAULT_PORT
+        assert config.server.host == "localhost"
+        assert config.server.port == DEFAULT_PORT
 
     def test_auto_reply_config(self, tmp_path):
         toml_content = """
@@ -72,15 +74,15 @@ interval = 3600
         toml_file = tmp_path / "config.toml"
         toml_file.write_text(toml_content)
         config = ServerConfig.from_toml(toml_file)
-        assert config.auto_reply_enable is True
-        assert config.auto_reply_interval == 3600
+        assert config.auto_reply.enable is True
+        assert config.auto_reply.interval == 3600
 
     def test_auto_reply_defaults(self, tmp_path):
         toml_file = tmp_path / "empty.toml"
         toml_file.write_text("")
         config = ServerConfig.from_toml(toml_file)
-        assert config.auto_reply_enable is False
-        assert config.auto_reply_interval == 86400
+        assert config.auto_reply.enable is False
+        assert config.auto_reply.interval == 86400
 
 
 class TestMailboxDirPermissions:

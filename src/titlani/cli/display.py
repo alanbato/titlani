@@ -132,45 +132,45 @@ def display_server_config(config: ServerConfig, console: Console) -> None:
     table.add_column("Value")
 
     # Network
-    table.add_row("Listen", f"{config.host}:{config.port}")
-    table.add_row("Hostname", config.hostname)
-    table.add_row("Mailbox Directory", str(config.mailbox_dir))
+    table.add_row("Listen", f"{config.server.host}:{config.server.port}")
+    table.add_row("Hostname", config.server.hostname)
+    table.add_row("Mailbox Directory", str(config.server.mailbox_dir))
 
     # TLS
-    if config.certfile:
-        table.add_row("TLS Certificate", str(config.certfile))
+    if config.server.certfile:
+        table.add_row("TLS Certificate", str(config.server.certfile))
     else:
         table.add_row("TLS Certificate", "[dim]auto-generated[/]")
 
     # Identity
-    if config.identity_certfile:
-        table.add_row("Identity Cert", str(config.identity_certfile))
+    if config.server.identity_certfile:
+        table.add_row("Identity Cert", str(config.server.identity_certfile))
     else:
         table.add_row("Identity Cert", "[dim]auto-generated[/]")
 
     # Rate limiting
-    if config.rate_limit_enable:
+    if config.rate_limit.enable:
         rl = (
             f"[green]Enabled[/] "
-            f"(capacity={config.rate_limit_capacity}, "
-            f"refill={config.rate_limit_refill_rate}/s)"
+            f"(capacity={config.rate_limit.capacity}, "
+            f"refill={config.rate_limit.refill_rate}/s)"
         )
         table.add_row("Rate Limiting", rl)
     else:
         table.add_row("Rate Limiting", "[dim]Disabled[/]")
 
     # Access control
-    if config.access_control_enable:
-        default = "allow" if config.access_control_default_allow else "deny"
+    if config.access_control.enable:
+        default = "allow" if config.access_control.default_allow else "deny"
         table.add_row("Access Control", f"[green]Enabled[/] (default: {default})")
     else:
         table.add_row("Access Control", "[dim]Disabled[/]")
 
     # GMAP
-    if config.gmap_enable:
+    if config.gmap.enable:
         table.add_row(
             "GMAP",
-            f"[green]Enabled[/] (port {config.gmap_port})",
+            f"[green]Enabled[/] (port {config.gmap.port})",
         )
     else:
         table.add_row("GMAP", "[dim]Disabled[/]")
@@ -181,10 +181,10 @@ def display_server_config(config: ServerConfig, console: Console) -> None:
         "optional": "[yellow]Optional[/]",
         "required": "[green]Required[/]",
     }
-    table.add_row(
-        "Sender Verification",
-        mode_styles.get(config.verification_mode, config.verification_mode),
-    )
+    ver_display = mode_styles.get(config.verification.mode, config.verification.mode)
+    if config.verification.mode != "off":
+        ver_display += f" (method: {config.verification.method})"
+    table.add_row("Sender Verification", ver_display)
 
     console.print(
         Panel(
@@ -244,6 +244,30 @@ def display_verification_list(
         table.add_row(
             address,
             format_fingerprint(fingerprint),
+            format_relative_time(verified_at),
+        )
+
+    console.print(table)
+
+
+def display_spki_list(
+    entries: list[tuple[str, str, datetime]],
+    console: Console,
+) -> None:
+    """Display server SPKI cache table."""
+    if not entries:
+        console.print("[yellow]No server SPKI entries in cache.[/]")
+        return
+
+    table = Table(title="Server SPKI Cache")
+    table.add_column("Hostname", style="cyan")
+    table.add_column("SPKI Hash")
+    table.add_column("Verified", justify="right")
+
+    for hostname, spki_hash, verified_at in entries:
+        table.add_row(
+            hostname,
+            format_fingerprint(spki_hash),
             format_relative_time(verified_at),
         )
 

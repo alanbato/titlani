@@ -1,14 +1,13 @@
 """Client-side configuration for Titlani CLI."""
 
 import tomllib
-from dataclasses import dataclass
 from pathlib import Path
 
 from platformdirs import user_config_path
+from pydantic import BaseModel
 
 
-@dataclass
-class ClientConfig:
+class ClientConfig(BaseModel):
     mailbox_dir: Path
 
     @classmethod

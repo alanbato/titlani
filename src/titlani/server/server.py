@@ -28,6 +28,8 @@ from ..identity.certificate import (
 from ..verification import (
     ProbeVerifier,
     SenderVerificationCache,
+    SPKIVerifier,
+    VerificationMethod,
     VerificationMode,
     VerifyingHandler,
 )
@@ -80,13 +82,13 @@ def _load_recipient_fingerprints(
 def _setup_encryption(
     config: ServerConfig,
 ) -> EncryptionManager | None:
-    if not config.encryption_enable:
+    if not config.encryption.enable:
         return None
 
-    manager = EncryptionManager(config.mailbox_dir)
-    key_dir = config.encryption_key_dir or config.mailbox_dir
+    manager = EncryptionManager(config.server.mailbox_dir)
+    key_dir = config.encryption.key_dir or config.server.mailbox_dir
 
-    for entry in config.mailbox_dir.iterdir():
+    for entry in config.server.mailbox_dir.iterdir():
         if entry.is_dir() and not entry.name.startswith("."):
             pub_path = key_dir / f"{entry.name}.enc.pub"
             if pub_path.exists():
@@ -111,14 +113,14 @@ def _ensure_certificates(
 
     Returns (certfile, keyfile, identity_certfile, identity_keyfile, tmp_dir).
     """
-    certfile = config.certfile
-    keyfile = config.keyfile
+    certfile = config.server.certfile
+    keyfile = config.server.keyfile
     tmp_dir = None
 
     if certfile is None or keyfile is None:
         tmp_dir = tempfile.mkdtemp(prefix="titlani_")
         cert_pem, key_pem = generate_self_signed_cert(
-            config.hostname, "Titlani Misfin Server"
+            config.server.hostname, "Titlani Misfin Server"
         )
         certfile = Path(tmp_dir) / "server.pem"
         keyfile = Path(tmp_dir) / "server.key"
@@ -127,18 +129,18 @@ def _ensure_certificates(
         os.chmod(keyfile, 0o600)
         logger.info(
             "auto_generated_server_cert",
-            hostname=config.hostname,
+            hostname=config.server.hostname,
         )
 
-    identity_certfile = config.identity_certfile
-    identity_keyfile = config.identity_keyfile
+    identity_certfile = config.server.identity_certfile
+    identity_keyfile = config.server.identity_keyfile
     if identity_certfile is None or identity_keyfile is None:
         if tmp_dir is None:
             tmp_dir = tempfile.mkdtemp(prefix="titlani_")
         id_cert_pem, id_key_pem = generate_identity_cert(
             mailbox="postmaster",
-            hostname=config.hostname,
-            blurb=f"Misfin Server ({config.hostname})",
+            hostname=config.server.hostname,
+            blurb=f"Misfin Server ({config.server.hostname})",
         )
         identity_certfile = Path(tmp_dir) / "identity.pem"
         identity_keyfile = Path(tmp_dir) / "identity.key"
@@ -147,7 +149,7 @@ def _ensure_certificates(
         os.chmod(identity_keyfile, 0o600)
         logger.info(
             "auto_generated_identity_cert",
-            hostname=config.hostname,
+            hostname=config.server.hostname,
         )
 
     return certfile, keyfile, identity_certfile, identity_keyfile, tmp_dir
@@ -156,19 +158,19 @@ def _ensure_certificates(
 def _build_middleware(config: ServerConfig) -> MiddlewareChain | None:
     """Build middleware chain from server config."""
     middlewares = []
-    if config.rate_limit_enable:
+    if config.rate_limit.enable:
         rate_config = RateLimitConfig(
-            capacity=config.rate_limit_capacity,
-            refill_rate=config.rate_limit_refill_rate,
-            retry_after=config.rate_limit_retry_after,
+            capacity=config.rate_limit.capacity,
+            refill_rate=config.rate_limit.refill_rate,
+            retry_after=config.rate_limit.retry_after,
         )
         middlewares.append(RateLimiter(rate_config))
 
-    if config.access_control_enable:
+    if config.access_control.enable:
         access_config = AccessControlConfig(
-            allow_list=config.access_control_allow_list,
-            deny_list=config.access_control_deny_list,
-            default_allow=config.access_control_default_allow,
+            allow_list=config.access_control.allow_list,
+            deny_list=config.access_control.deny_list,
+            default_allow=config.access_control.default_allow,
         )
         middlewares.append(AccessControl(access_config))
 
@@ -182,29 +184,41 @@ def _setup_verification(
     identity_keyfile: Path,
 ) -> tuple[FileMailboxHandler | VerifyingHandler, SenderVerificationCache | None]:
     """Wrap handler with sender verification if configured."""
-    if config.verification_mode == "off":
+    if config.verification.mode == "off":
         return handler, None
 
-    cache_path = config.verification_cache_path
+    cache_path = config.verification.cache_path
     if cache_path is None:
-        cache_path = config.mailbox_dir / "verification_cache.db"
-    cache = SenderVerificationCache(cache_path, ttl_seconds=config.verification_cache_ttl)
+        cache_path = config.server.mailbox_dir / "verification_cache.db"
+    cache = SenderVerificationCache(cache_path, ttl_seconds=config.verification.cache_ttl)
 
-    verifier = ProbeVerifier(
-        cache=cache,
-        identity_cert=identity_certfile,
-        identity_key=identity_keyfile,
-        port=config.port,
-        timeout=config.verification_probe_timeout,
-    )
+    method = VerificationMethod(config.verification.method)
+
+    if method == VerificationMethod.SPKI:
+        verifier: ProbeVerifier | SPKIVerifier = SPKIVerifier(
+            cache=cache,
+            port=config.server.port,
+            timeout=config.verification.probe_timeout,
+            on_spki_change=config.verification.spki_on_change,
+        )
+    else:
+        verifier = ProbeVerifier(
+            cache=cache,
+            identity_cert=identity_certfile,
+            identity_key=identity_keyfile,
+            port=config.server.port,
+            timeout=config.verification.probe_timeout,
+        )
+
     verified_handler = VerifyingHandler(
         wrapped=handler,
         verifier=verifier,
-        mode=VerificationMode(config.verification_mode),
+        mode=VerificationMode(config.verification.mode),
     )
     logger.info(
         "sender_verification_enabled",
-        mode=config.verification_mode,
+        mode=config.verification.mode,
+        method=config.verification.method,
     )
     return verified_handler, cache
 
@@ -217,7 +231,7 @@ async def _start_gmap_server(
     recipient_fps: dict[str, str],
 ) -> asyncio.Server | None:
     """Start the GMAP server if enabled and available."""
-    if not config.gmap_enable or not _gmap_available:
+    if not config.gmap.enable or not _gmap_available:
         return None
 
     client_ca_certs = [str(p) for p in cert_dir.glob("*.pem") if p.is_file()]
@@ -241,8 +255,8 @@ async def _start_gmap_server(
     )
 
     gmap_handler = GmapHandler(
-        mailbox_dir=config.mailbox_dir,
-        hostname=config.hostname,
+        mailbox_dir=config.server.mailbox_dir,
+        hostname=config.server.hostname,
         recipient_fps=recipient_fps,
     )
 
@@ -251,14 +265,14 @@ async def _start_gmap_server(
         lambda: GeminiServerProtocol(
             request_handler=gmap_handler.handle_request,
         ),
-        host=config.host,
-        port=config.gmap_port,
+        host=config.server.host,
+        port=config.gmap.port,
         ssl=gmap_ssl_context,
     )
 
     logger.info(
         "gmap_enabled",
-        port=config.gmap_port,
+        port=config.gmap.port,
         client_certs=len(client_ca_certs),
     )
     return server
@@ -270,7 +284,7 @@ async def start_server(
 ) -> None:
     """Start a Misfin server."""
     configure_logging(log_level=log_level)
-    config.validate()
+    config.validate_files()
 
     certfile, keyfile, identity_certfile, identity_keyfile, tmp_dir = (
         _ensure_certificates(config)
@@ -290,8 +304,8 @@ async def start_server(
     middleware = _build_middleware(config)
 
     # Create mailbox directory with restrictive permissions
-    config.mailbox_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(config.mailbox_dir, 0o700)
+    config.server.mailbox_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(config.server.mailbox_dir, 0o700)
 
     # Compute identity certificate fingerprint for probe responses
     id_cert = load_pem_x509_certificate(identity_certfile.read_bytes())
@@ -301,21 +315,21 @@ async def start_server(
     encryption_manager = _setup_encryption(config)
 
     # Load per-mailbox recipient fingerprints
-    cert_dir = config.identity_cert_dir or config.mailbox_dir
+    cert_dir = config.server.identity_cert_dir or config.server.mailbox_dir
     recipient_fps = _load_recipient_fingerprints(cert_dir, id_fingerprint)
 
     # Create base handler
     base_handler = FileMailboxHandler(
-        mailbox_dir=config.mailbox_dir,
-        hostname=config.hostname,
+        mailbox_dir=config.server.mailbox_dir,
+        hostname=config.server.hostname,
         recipient_fingerprint_fn=lambda m: recipient_fps.get(m, id_fingerprint),
         identity_cert_fingerprint=id_fingerprint,
         encryption_manager=encryption_manager,
-        auto_reply_enabled=config.auto_reply_enable,
-        auto_reply_interval=config.auto_reply_interval,
+        auto_reply_enabled=config.auto_reply.enable,
+        auto_reply_interval=config.auto_reply.interval,
         identity_certfile=identity_certfile,
         identity_keyfile=identity_keyfile,
-        port=config.port,
+        port=config.server.port,
     )
 
     handler, cache = _setup_verification(
@@ -329,21 +343,21 @@ async def start_server(
             message_handler=handler.handle_message,
             middleware=middleware,
         ),
-        host=config.host,
-        port=config.port,
+        host=config.server.host,
+        port=config.server.port,
         ssl=ssl_context,
     )
 
     logger.info(
         "server_started",
-        host=config.host,
-        port=config.port,
-        hostname=config.hostname,
-        rate_limiting=config.rate_limit_enable,
-        access_control=config.access_control_enable,
-        encryption=config.encryption_enable,
-        gmap=config.gmap_enable,
-        mailbox_dir=str(config.mailbox_dir),
+        host=config.server.host,
+        port=config.server.port,
+        hostname=config.server.hostname,
+        rate_limiting=config.rate_limit.enable,
+        access_control=config.access_control.enable,
+        encryption=config.encryption.enable,
+        gmap=config.gmap.enable,
+        mailbox_dir=str(config.server.mailbox_dir),
     )
 
     gmap_server = await _start_gmap_server(

@@ -1,130 +1,98 @@
 """Misfin server configuration."""
 
 import tomllib
-from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from platformdirs import user_data_path
+from pydantic import BaseModel, Field
 
 from ..protocol.constants import DEFAULT_GMAP_PORT, DEFAULT_PORT
+
+VerificationModeStr = Literal["off", "optional", "required"]
+VerificationMethodStr = Literal["probe", "spki"]
+SPKIOnChangeStr = Literal["reject", "accept"]
 
 
 def default_mailbox_dir() -> Path:
     return user_data_path("titlani") / "mail"
 
 
-@dataclass
-class ServerConfig:
+class ServerSection(BaseModel):
     host: str = "localhost"
-    port: int = DEFAULT_PORT
+    port: int = Field(default=DEFAULT_PORT, ge=1, le=65535)
     hostname: str = "localhost"
     certfile: Path | None = None
     keyfile: Path | None = None
-    mailbox_dir: Path = field(default_factory=default_mailbox_dir)
+    mailbox_dir: Path = Field(default_factory=default_mailbox_dir)
     identity_certfile: Path | None = None
     identity_keyfile: Path | None = None
-
-    # Rate limiting
-    rate_limit_enable: bool = False
-    rate_limit_capacity: int = 10
-    rate_limit_refill_rate: float = 1.0
-    rate_limit_retry_after: int = 30
-
-    # Access control
-    access_control_enable: bool = False
-    access_control_allow_list: list[str] = field(default_factory=list)
-    access_control_deny_list: list[str] = field(default_factory=list)
-    access_control_default_allow: bool = True
-
-    # Sender verification ("off" | "optional" | "required")
-    verification_mode: str = "off"
-    verification_cache_path: Path | None = None
-    verification_cache_ttl: int = 604800  # 7 days
-    verification_probe_timeout: float = 10.0
-
-    # Per-mailbox identity certificates directory
     identity_cert_dir: Path | None = None
 
-    # At-rest encryption
-    encryption_enable: bool = False
-    encryption_key_dir: Path | None = None
 
-    # GMAP (Gemini Mailbox Access Protocol)
-    gmap_enable: bool = False
-    gmap_port: int = DEFAULT_GMAP_PORT
+class RateLimitSection(BaseModel):
+    enable: bool = False
+    capacity: int = 10
+    refill_rate: float = 1.0
+    retry_after: int = 30
 
-    # Auto-reply
-    auto_reply_enable: bool = False
-    auto_reply_interval: int = 86400  # seconds between replies to same sender
+
+class AccessControlSection(BaseModel):
+    enable: bool = False
+    allow_list: list[str] = Field(default_factory=list)
+    deny_list: list[str] = Field(default_factory=list)
+    default_allow: bool = True
+
+
+class VerificationSection(BaseModel):
+    mode: VerificationModeStr = "off"
+    method: VerificationMethodStr = "probe"
+    cache_path: Path | None = None
+    cache_ttl: int = 604800  # 7 days
+    probe_timeout: float = 10.0
+    spki_on_change: SPKIOnChangeStr = "reject"
+
+
+class EncryptionSection(BaseModel):
+    enable: bool = False
+    key_dir: Path | None = None
+
+
+class GmapSection(BaseModel):
+    enable: bool = False
+    port: int = Field(default=DEFAULT_GMAP_PORT, ge=1, le=65535)
+
+
+class AutoReplySection(BaseModel):
+    enable: bool = False
+    interval: int = 86400  # seconds between replies to same sender
+
+
+class ServerConfig(BaseModel):
+    server: ServerSection = Field(default_factory=ServerSection)
+    rate_limit: RateLimitSection = Field(default_factory=RateLimitSection)
+    access_control: AccessControlSection = Field(
+        default_factory=AccessControlSection
+    )
+    verification: VerificationSection = Field(
+        default_factory=VerificationSection
+    )
+    encryption: EncryptionSection = Field(default_factory=EncryptionSection)
+    gmap: GmapSection = Field(default_factory=GmapSection)
+    auto_reply: AutoReplySection = Field(default_factory=AutoReplySection)
 
     @classmethod
     def from_toml(cls, path: Path) -> "ServerConfig":
         with open(path, "rb") as f:
             data = tomllib.load(f)
+        return cls(**data)
 
-        server = data.get("server", {})
-        rate_limit = data.get("rate_limit", {})
-        access_control = data.get("access_control", {})
-
-        config = cls(
-            host=server.get("host", "localhost"),
-            port=server.get("port", DEFAULT_PORT),
-            hostname=server.get("hostname", "localhost"),
-            mailbox_dir=Path(server.get("mailbox_dir", str(default_mailbox_dir()))),
-        )
-
-        if "certfile" in server:
-            config.certfile = Path(server["certfile"])
-        if "keyfile" in server:
-            config.keyfile = Path(server["keyfile"])
-        if "identity_certfile" in server:
-            config.identity_certfile = Path(server["identity_certfile"])
-        if "identity_keyfile" in server:
-            config.identity_keyfile = Path(server["identity_keyfile"])
-
-        config.rate_limit_enable = rate_limit.get("enable", False)
-        config.rate_limit_capacity = int(rate_limit.get("capacity", 10))
-        config.rate_limit_refill_rate = rate_limit.get("refill_rate", 1.0)
-        config.rate_limit_retry_after = rate_limit.get("retry_after", 30)
-
-        config.access_control_enable = access_control.get("enable", False)
-        config.access_control_allow_list = access_control.get("allow_list", [])
-        config.access_control_deny_list = access_control.get("deny_list", [])
-        config.access_control_default_allow = access_control.get("default_allow", True)
-
-        verification = data.get("verification", {})
-        config.verification_mode = verification.get("mode", "off")
-        if "cache_path" in verification:
-            config.verification_cache_path = Path(verification["cache_path"])
-        config.verification_cache_ttl = int(verification.get("cache_ttl", 604800))
-        config.verification_probe_timeout = float(verification.get("probe_timeout", 10.0))
-
-        if "identity_cert_dir" in server:
-            config.identity_cert_dir = Path(server["identity_cert_dir"])
-
-        encryption = data.get("encryption", {})
-        config.encryption_enable = encryption.get("enable", False)
-        if "key_dir" in encryption:
-            config.encryption_key_dir = Path(encryption["key_dir"])
-
-        gmap = data.get("gmap", {})
-        config.gmap_enable = gmap.get("enable", False)
-        config.gmap_port = int(gmap.get("port", DEFAULT_GMAP_PORT))
-
-        auto_reply = data.get("auto_reply", {})
-        config.auto_reply_enable = auto_reply.get("enable", False)
-        config.auto_reply_interval = int(auto_reply.get("interval", 86400))
-
-        return config
-
-    def validate(self) -> None:
-        if self.certfile and not self.certfile.exists():
-            raise ValueError(f"Certificate file not found: {self.certfile}")
-        if self.keyfile and not self.keyfile.exists():
-            raise ValueError(f"Key file not found: {self.keyfile}")
-        if self.port < 1 or self.port > 65535:
-            raise ValueError(f"Invalid port: {self.port}")
-        if self.gmap_port < 1 or self.gmap_port > 65535:
-            raise ValueError(f"Invalid GMAP port: {self.gmap_port}")
-        if self.verification_mode not in ("off", "optional", "required"):
-            raise ValueError(f"Invalid verification mode: {self.verification_mode!r}")
+    def validate_files(self) -> None:
+        if self.server.certfile and not self.server.certfile.exists():
+            raise ValueError(
+                f"Certificate file not found: {self.server.certfile}"
+            )
+        if self.server.keyfile and not self.server.keyfile.exists():
+            raise ValueError(
+                f"Key file not found: {self.server.keyfile}"
+            )

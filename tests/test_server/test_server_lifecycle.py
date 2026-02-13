@@ -4,7 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 from titlani.identity.certificate import generate_identity_cert
-from titlani.server.config import ServerConfig
+from titlani.server.config import ServerConfig, ServerSection
 from titlani.server.server import _load_recipient_fingerprints, start_server
 
 
@@ -12,10 +12,12 @@ class TestAutoCleanup:
     async def test_tmp_dir_cleaned_on_shutdown(self, tmp_path):
         """Temp cert directory should be removed after server stops."""
         config = ServerConfig(
-            host="127.0.0.1",
-            port=1958,
-            hostname="test.example.com",
-            mailbox_dir=tmp_path / "mailboxes",
+            server=ServerSection(
+                host="127.0.0.1",
+                port=1958,
+                hostname="test.example.com",
+                mailbox_dir=tmp_path / "mailboxes",
+            )
         )
         (tmp_path / "mailboxes").mkdir()
 
@@ -35,11 +37,13 @@ class TestAutoCleanup:
     async def test_cache_closed_on_shutdown(self, tmp_path):
         """Verification cache should be closed after server stops."""
         config = ServerConfig(
-            host="127.0.0.1",
-            port=1958,
-            hostname="test.example.com",
-            mailbox_dir=tmp_path / "mailboxes",
-            verification_mode="optional",
+            server=ServerSection(
+                host="127.0.0.1",
+                port=1958,
+                hostname="test.example.com",
+                mailbox_dir=tmp_path / "mailboxes",
+            ),
+            verification={"mode": "optional"},
         )
         (tmp_path / "mailboxes").mkdir()
 

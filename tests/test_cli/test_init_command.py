@@ -68,9 +68,9 @@ class TestInitWizard:
         assert result.exit_code == 0
 
         config = ServerConfig.from_toml(tmp_path / "server.toml")
-        assert config.hostname == "localhost"
-        assert config.port == 1958
-        assert config.mailbox_dir == default_mailbox_dir()
+        assert config.server.hostname == "localhost"
+        assert config.server.port == 1958
+        assert config.server.mailbox_dir == default_mailbox_dir()
 
     def test_client_toml_references_server_config(self, tmp_path):
         result = runner.invoke(
@@ -93,20 +93,20 @@ class TestInitWizard:
         assert result.exit_code == 0
 
         config = ServerConfig.from_toml(tmp_path / "server.toml")
-        assert config.hostname == "mail.example.com"
-        assert config.port == 1959
-        assert config.mailbox_dir == Path("/tmp/mail")
-        assert config.gmap_enable is True
-        assert config.gmap_port == 1960
-        assert config.verification_mode == "required"
-        assert config.encryption_enable is True
-        assert config.auto_reply_enable is True
-        assert config.auto_reply_interval == 3600
-        assert config.rate_limit_enable is True
-        assert config.rate_limit_capacity == 20
-        assert config.rate_limit_refill_rate == 2.0
-        assert config.access_control_enable is True
-        assert config.access_control_default_allow is True
+        assert config.server.hostname == "mail.example.com"
+        assert config.server.port == 1959
+        assert config.server.mailbox_dir == Path("/tmp/mail")
+        assert config.gmap.enable is True
+        assert config.gmap.port == 1960
+        assert config.verification.mode == "required"
+        assert config.encryption.enable is True
+        assert config.auto_reply.enable is True
+        assert config.auto_reply.interval == 3600
+        assert config.rate_limit.enable is True
+        assert config.rate_limit.capacity == 20
+        assert config.rate_limit.refill_rate == 2.0
+        assert config.access_control.enable is True
+        assert config.access_control.default_allow is True
 
     def test_refuses_overwrite_without_force(self, tmp_path):
         (tmp_path / "server.toml").write_text("")
@@ -152,12 +152,12 @@ class TestInitWizard:
         assert result.exit_code == 0
 
         config = ServerConfig.from_toml(tmp_path / "server.toml")
-        assert config.gmap_enable is False
-        assert config.verification_mode == "off"
-        assert config.encryption_enable is False
-        assert config.auto_reply_enable is False
-        assert config.rate_limit_enable is False
-        assert config.access_control_enable is False
+        assert config.gmap.enable is False
+        assert config.verification.mode == "off"
+        assert config.encryption.enable is False
+        assert config.auto_reply.enable is False
+        assert config.rate_limit.enable is False
+        assert config.access_control.enable is False
 
 
 class TestServeAutoDiscover:
