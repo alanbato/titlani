@@ -5,7 +5,8 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
-from ...cli import display_verification_list
+from ...cli import display_spki_list, display_verification_list
+from ...cli.display import confirm_action
 
 console = Console()
 
@@ -31,5 +32,56 @@ def verification_list(
     try:
         entries = cache.list_verified()
         display_verification_list(entries, console)
+    finally:
+        cache.close()
+
+
+@verification_app.command("spki-list")
+def spki_list(
+    cache_path: Path | None = typer.Option(
+        None,
+        "--cache",
+        "-c",
+        help="Path to verification cache database",
+    ),
+) -> None:
+    """List all cached server SPKI hashes."""
+    from ...verification.cache import SenderVerificationCache
+
+    cache = SenderVerificationCache(cache_path)
+    try:
+        entries = cache.list_server_spki()
+        display_spki_list(entries, console)
+    finally:
+        cache.close()
+
+
+@verification_app.command("spki-clear")
+def spki_clear(
+    cache_path: Path | None = typer.Option(
+        None,
+        "--cache",
+        "-c",
+        help="Path to verification cache database",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Skip confirmation prompt",
+    ),
+) -> None:
+    """Clear all cached server SPKI hashes."""
+    from ...verification.cache import SenderVerificationCache
+
+    if not force:
+        if not confirm_action("Clear all server SPKI cache entries?", console):
+            console.print("[yellow]Cancelled.[/]")
+            return
+
+    cache = SenderVerificationCache(cache_path)
+    try:
+        count = cache.clear_server_spki()
+        console.print(f"[green]Cleared {count} server SPKI entries.[/]")
     finally:
         cache.close()

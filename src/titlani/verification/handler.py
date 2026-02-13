@@ -6,6 +6,7 @@ from ..protocol.request import MisfinRequest
 from ..protocol.response import MisfinResponse
 from ..protocol.status import StatusCode
 from ..server.handler import MessageHandler
+from .spki_verifier import SPKIVerifier
 from .verifier import ProbeVerifier, VerificationMode
 
 logger = get_logger(__name__)
@@ -21,7 +22,7 @@ class VerifyingHandler(MessageHandler):
     def __init__(
         self,
         wrapped: MessageHandler,
-        verifier: ProbeVerifier,
+        verifier: ProbeVerifier | SPKIVerifier,
         mode: VerificationMode = VerificationMode.OPTIONAL,
     ) -> None:
         self.wrapped = wrapped

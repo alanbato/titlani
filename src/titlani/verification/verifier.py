@@ -23,6 +23,11 @@ class VerificationMode(StrEnum):
     REQUIRED = "required"
 
 
+class VerificationMethod(StrEnum):
+    PROBE = "probe"
+    SPKI = "spki"
+
+
 @dataclass(frozen=True)
 class VerificationResult:
     verified: bool
