@@ -175,6 +175,16 @@ def display_server_config(config: ServerConfig, console: Console) -> None:
     else:
         table.add_row("GMAP", "[dim]Disabled[/]")
 
+    # Mailing Lists
+    if config.lists.enable:
+        archive = "archive + forward" if config.lists.archive else "forward only"
+        table.add_row(
+            "Mailing Lists",
+            f"[green]Enabled[/] ({archive})",
+        )
+    else:
+        table.add_row("Mailing Lists", "[dim]Disabled[/]")
+
     # Verification
     mode_styles = {
         "off": "[dim]Disabled[/]",

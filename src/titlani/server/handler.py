@@ -17,6 +17,13 @@ from ..protocol.constants import DEFAULT_PORT
 from ..protocol.request import MisfinRequest
 from ..protocol.response import MisfinResponse
 from ..protocol.status import StatusCode
+from .lists import (
+    get_or_create_list_identity,
+    is_mailing_list,
+    is_subscriber,
+    load_subscribers,
+    should_prevent_loop,
+)
 
 logger = get_logger(__name__)
 
@@ -41,6 +48,8 @@ class FileMailboxHandler(MessageHandler):
         identity_certfile: Path | None = None,
         identity_keyfile: Path | None = None,
         port: int = DEFAULT_PORT,
+        lists_enabled: bool = False,
+        lists_archive: bool = True,
     ) -> None:
         self.mailbox_dir = mailbox_dir
         self.hostname = hostname
@@ -52,6 +61,8 @@ class FileMailboxHandler(MessageHandler):
         self.identity_certfile = identity_certfile
         self.identity_keyfile = identity_keyfile
         self.port = port
+        self.lists_enabled = lists_enabled
+        self.lists_archive = lists_archive
         self._auto_reply_last_sent: dict[str, datetime] = {}
 
     async def handle_message(self, request: MisfinRequest) -> MisfinResponse:
@@ -112,8 +123,19 @@ class FileMailboxHandler(MessageHandler):
                 meta="Invalid message format",
             )
 
-        self._store_message(mailbox, mailbox_path, message_bytes)
+        # Mailing list posting restriction: reject non-subscribers and loops
+        list_rejection = self._check_list_posting(
+            mailbox, mailbox_path, senders, message_bytes
+        )
+        if list_rejection is not None:
+            return list_rejection
+
+        is_list = self._is_active_list(mailbox_path)
+        should_store = not is_list or self.lists_archive
+        if should_store:
+            self._store_message(mailbox, mailbox_path, message_bytes)
         self._maybe_trigger_auto_reply(mailbox, mailbox_path, message_bytes)
+        self._maybe_trigger_list_forwarding(mailbox, mailbox_path, message_bytes)
 
         return MisfinResponse(
             status=StatusCode.SUCCESS,
@@ -426,3 +448,148 @@ class FileMailboxHandler(MessageHandler):
                 recipient=sender_addr,
                 error=str(e),
             )
+
+    # -- Mailing list support --
+
+    def _is_active_list(self, mailbox_path: Path) -> bool:
+        """Return True if the mailbox is a mailing list and lists are enabled."""
+        if not self.lists_enabled:
+            return False
+        return is_mailing_list(mailbox_path)
+
+    def _check_list_posting(
+        self,
+        mailbox: str,
+        mailbox_path: Path,
+        senders: list[MisfinAddress],
+        message_bytes: bytes,
+    ) -> MisfinResponse | None:
+        """Reject non-subscribers and loops for mailing lists.
+
+        Returns an error response when posting is not allowed, or None
+        to allow delivery to proceed.
+        """
+        if not self._is_active_list(mailbox_path):
+            return None
+
+        # Loop prevention: reject if the list address is already a recipient
+        try:
+            parsed = GemmailMessage.from_bytes(message_bytes)
+            list_address = f"{mailbox}@{self.hostname}"
+            if should_prevent_loop(parsed, list_address):
+                logger.info("list_loop_prevented", mailbox=mailbox)
+                return MisfinResponse(
+                    status=StatusCode.BAD_REQUEST,
+                    meta="Loop detected: list address in recipients",
+                )
+        except ValueError:
+            pass
+
+        subscribers = load_subscribers(mailbox_path)
+        for sender in senders:
+            if is_subscriber(sender.address, subscribers):
+                return None
+
+        logger.info(
+            "list_post_rejected",
+            mailbox=mailbox,
+            senders=[s.address for s in senders],
+        )
+        return MisfinResponse(
+            status=StatusCode.UNAUTHORIZED_SENDER,
+            meta="Only subscribers may post to this list",
+        )
+
+    def _maybe_trigger_list_forwarding(
+        self,
+        mailbox: str,
+        mailbox_path: Path,
+        message_bytes: bytes,
+    ) -> None:
+        """Trigger mailing list forwarding if the mailbox is a list."""
+        if not self._is_active_list(mailbox_path):
+            return
+
+        try:
+            parsed_msg = GemmailMessage.from_bytes(message_bytes)
+            subscribers = load_subscribers(mailbox_path)
+            if not subscribers:
+                return
+
+            asyncio.ensure_future(
+                self._forward_to_list(mailbox, mailbox_path, parsed_msg, subscribers)
+            )
+        except Exception:
+            pass  # Never let list forwarding affect delivery
+
+    async def _forward_to_list(
+        self,
+        mailbox: str,
+        mailbox_path: Path,
+        message: GemmailMessage,
+        subscribers: list[str],
+    ) -> None:
+        """Forward a message to all list subscribers."""
+        try:
+            cert_path, key_path = get_or_create_list_identity(
+                mailbox_path, mailbox, self.hostname
+            )
+        except Exception as e:
+            logger.error(
+                "list_identity_failed",
+                mailbox=mailbox,
+                error=str(e),
+            )
+            return
+
+        sender_addr = message.senders[0].address.lower() if message.senders else ""
+
+        from ..client.session import MisfinClient
+
+        success_count = 0
+        try:
+            async with MisfinClient(
+                timeout=10.0,
+                port=self.port,
+                client_cert=cert_path,
+                client_key=key_path,
+            ) as client:
+                for subscriber in subscribers:
+                    if subscriber == sender_addr:
+                        continue
+                    try:
+                        response = await client.send(
+                            to=subscriber,
+                            body=message.body,
+                            subject=message.subject,
+                        )
+                        if 20 <= response.status < 30:
+                            success_count += 1
+                        else:
+                            logger.warning(
+                                "list_forward_failed",
+                                mailbox=mailbox,
+                                recipient=subscriber,
+                                status=response.status,
+                            )
+                    except Exception as e:
+                        logger.warning(
+                            "list_forward_error",
+                            mailbox=mailbox,
+                            recipient=subscriber,
+                            error=str(e),
+                        )
+        except Exception as e:
+            logger.error(
+                "list_client_failed",
+                mailbox=mailbox,
+                error=str(e),
+            )
+            return
+
+        logger.info(
+            "list_forwarded",
+            mailbox=mailbox,
+            total=len(subscribers),
+            sent=success_count,
+        )

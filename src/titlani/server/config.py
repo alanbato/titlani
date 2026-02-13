@@ -68,6 +68,11 @@ class AutoReplySection(BaseModel):
     interval: int = 86400  # seconds between replies to same sender
 
 
+class ListsSection(BaseModel):
+    enable: bool = False
+    archive: bool = True  # store a copy of forwarded messages
+
+
 class ServerConfig(BaseModel):
     server: ServerSection = Field(default_factory=ServerSection)
     rate_limit: RateLimitSection = Field(default_factory=RateLimitSection)
@@ -80,6 +85,7 @@ class ServerConfig(BaseModel):
     encryption: EncryptionSection = Field(default_factory=EncryptionSection)
     gmap: GmapSection = Field(default_factory=GmapSection)
     auto_reply: AutoReplySection = Field(default_factory=AutoReplySection)
+    lists: ListsSection = Field(default_factory=ListsSection)
 
     @classmethod
     def from_toml(cls, path: Path) -> "ServerConfig":

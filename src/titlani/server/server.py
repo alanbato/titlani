@@ -330,6 +330,8 @@ async def start_server(
         identity_certfile=identity_certfile,
         identity_keyfile=identity_keyfile,
         port=config.server.port,
+        lists_enabled=config.lists.enable,
+        lists_archive=config.lists.archive,
     )
 
     handler, cache = _setup_verification(
