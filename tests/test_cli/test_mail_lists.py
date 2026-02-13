@@ -11,7 +11,7 @@ class TestMailListCreate:
     def test_creates_list_directory(self, tmp_path):
         result = runner.invoke(
             app,
-            ["mail", "list-create", "announce", "-d", str(tmp_path)],
+            ["list", "create", "announce", "-d", str(tmp_path)],
         )
         assert result.exit_code == 0
         assert "Created" in result.output
@@ -22,7 +22,7 @@ class TestMailListCreate:
     def test_subscribers_file_has_comments(self, tmp_path):
         runner.invoke(
             app,
-            ["mail", "list-create", "announce", "-d", str(tmp_path)],
+            ["list", "create", "announce", "-d", str(tmp_path)],
         )
         content = (tmp_path / "announce" / "subscribers.txt").read_text()
         assert content.startswith("#")
@@ -31,7 +31,7 @@ class TestMailListCreate:
         (tmp_path / "announce").mkdir()
         result = runner.invoke(
             app,
-            ["mail", "list-create", "announce", "-d", str(tmp_path)],
+            ["list", "create", "announce", "-d", str(tmp_path)],
         )
         assert result.exit_code == 1
         assert "already exists" in result.output
@@ -39,7 +39,7 @@ class TestMailListCreate:
     def test_rejects_invalid_name(self, tmp_path):
         result = runner.invoke(
             app,
-            ["mail", "list-create", "my list!", "-d", str(tmp_path)],
+            ["list", "create", "my list!", "-d", str(tmp_path)],
         )
         assert result.exit_code == 1
         assert "Invalid" in result.output
@@ -48,8 +48,8 @@ class TestMailListCreate:
         result = runner.invoke(
             app,
             [
-                "mail",
-                "list-create",
+                "list",
+                "create",
                 "my-list_v2.0",
                 "-d",
                 str(tmp_path),
@@ -68,7 +68,7 @@ class TestMailListSubscribers:
         )
         result = runner.invoke(
             app,
-            ["mail", "list-subscribers", "announce", "-d", str(tmp_path)],
+            ["list", "subscribers", "announce", "-d", str(tmp_path)],
         )
         assert result.exit_code == 0
         assert "alice@example.com" in result.output
@@ -81,7 +81,7 @@ class TestMailListSubscribers:
         (list_path / "subscribers.txt").write_text("# empty\n")
         result = runner.invoke(
             app,
-            ["mail", "list-subscribers", "announce", "-d", str(tmp_path)],
+            ["list", "subscribers", "announce", "-d", str(tmp_path)],
         )
         assert result.exit_code == 0
         assert "No subscribers" in result.output
@@ -89,7 +89,7 @@ class TestMailListSubscribers:
     def test_nonexistent_list(self, tmp_path):
         result = runner.invoke(
             app,
-            ["mail", "list-subscribers", "nope", "-d", str(tmp_path)],
+            ["list", "subscribers", "nope", "-d", str(tmp_path)],
         )
         assert result.exit_code == 1
         assert "not found" in result.output.lower()
@@ -98,7 +98,7 @@ class TestMailListSubscribers:
         (tmp_path / "alice").mkdir()
         result = runner.invoke(
             app,
-            ["mail", "list-subscribers", "alice", "-d", str(tmp_path)],
+            ["list", "subscribers", "alice", "-d", str(tmp_path)],
         )
         assert result.exit_code == 1
         assert "Not a mailing list" in result.output
@@ -112,8 +112,8 @@ class TestMailListAdd:
         result = runner.invoke(
             app,
             [
-                "mail",
-                "list-add",
+                "list",
+                "add",
                 "announce",
                 "alice@example.com",
                 "-d",
@@ -132,8 +132,8 @@ class TestMailListAdd:
         result = runner.invoke(
             app,
             [
-                "mail",
-                "list-add",
+                "list",
+                "add",
                 "announce",
                 "alice@example.com",
                 "-d",
@@ -150,8 +150,8 @@ class TestMailListAdd:
         result = runner.invoke(
             app,
             [
-                "mail",
-                "list-add",
+                "list",
+                "add",
                 "announce",
                 "not-an-address",
                 "-d",
@@ -166,8 +166,8 @@ class TestMailListAdd:
         result = runner.invoke(
             app,
             [
-                "mail",
-                "list-add",
+                "list",
+                "add",
                 "alice",
                 "bob@other.com",
                 "-d",
@@ -188,8 +188,8 @@ class TestMailListRemove:
         result = runner.invoke(
             app,
             [
-                "mail",
-                "list-remove",
+                "list",
+                "remove",
                 "announce",
                 "alice@example.com",
                 "-d",
@@ -211,8 +211,8 @@ class TestMailListRemove:
         result = runner.invoke(
             app,
             [
-                "mail",
-                "list-remove",
+                "list",
+                "remove",
                 "announce",
                 "alice@example.com",
                 "-d",
@@ -231,8 +231,8 @@ class TestMailListRemove:
         result = runner.invoke(
             app,
             [
-                "mail",
-                "list-remove",
+                "list",
+                "remove",
                 "announce",
                 "nobody@here.com",
                 "-d",

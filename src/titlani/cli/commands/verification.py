@@ -15,6 +15,12 @@ verification_app = typer.Typer(
     no_args_is_help=True,
 )
 
+spki_app = typer.Typer(
+    help="Manage server SPKI cache",
+    no_args_is_help=True,
+)
+verification_app.add_typer(spki_app, name="spki")
+
 
 @verification_app.command("list")
 def verification_list(
@@ -36,7 +42,7 @@ def verification_list(
         cache.close()
 
 
-@verification_app.command("spki-list")
+@spki_app.command("list")
 def spki_list(
     cache_path: Path | None = typer.Option(
         None,
@@ -56,7 +62,7 @@ def spki_list(
         cache.close()
 
 
-@verification_app.command("spki-clear")
+@spki_app.command("clear")
 def spki_clear(
     cache_path: Path | None = typer.Option(
         None,

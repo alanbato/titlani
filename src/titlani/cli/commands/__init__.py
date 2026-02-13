@@ -4,6 +4,7 @@ import typer
 
 from .identity import identity_app
 from .init import init
+from .list import list_app
 from .mail import mail_app
 from .send import send
 from .serve import serve
@@ -24,5 +25,6 @@ app.command()(serve)
 app.command()(version)
 app.add_typer(identity_app, name="identity")
 app.add_typer(tofu_app, name="tofu")
+app.add_typer(list_app, name="list")
 app.add_typer(mail_app, name="mail")
 app.add_typer(verification_app, name="verification")
