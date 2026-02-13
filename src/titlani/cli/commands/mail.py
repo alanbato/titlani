@@ -307,6 +307,17 @@ def mail_reply(
             quoted = "\n".join(f"> {line}" for line in original.body.split("\n"))
             reply_body = f"{reply_body}\n\n{quoted}"
 
+    # Append reply-to link referencing the original message ID
+    from ...content.message_id import (
+        build_reply_link,
+        parse_message_id_from_filename,
+    )
+
+    original_msgid = parse_message_id_from_filename(gemmail_file.name)
+    if original_msgid:
+        link = build_reply_link(original_msgid)
+        reply_body = f"{reply_body.rstrip()}\n{link}\n"
+
     sender = build_sender_from_cert(cert) if cert else None
 
     async def _reply() -> None:

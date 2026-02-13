@@ -249,29 +249,25 @@ class GmapMailbox:
 def _filename_to_msgid(filename: str) -> str | None:
     """Extract message ID from filename.
 
-    '20260211T143052Z.gemmail' -> '20260211T143052Z'
-    '20260211T143052Z.gemmail.new' -> '20260211T143052Z'
-    '20260211T143052Z.gemmail.enc' -> '20260211T143052Z'
-    '20260211T143052Z.gemmail.enc.new' -> '20260211T143052Z'
-    """
-    stem = filename
-    for suffix in (".gemmail.enc.new", ".gemmail.enc", ".gemmail.new", ".gemmail"):
-        if stem.endswith(suffix):
-            stem = stem[: -len(suffix)]
-            break
-    else:
-        return None
+    New format (with hash):
+    '20260211T143052Z-a1b2c3d4.gemmail' -> '20260211T143052Z-a1b2c3d4'
 
-    # Validate format: YYYYMMDDTHHMMSSZ
-    if re.fullmatch(r"\d{8}T\d{6}Z", stem):
-        return stem
-    return None
+    Old format (timestamp only):
+    '20260211T143052Z.gemmail' -> '20260211T143052Z'
+    """
+    from ..content.message_id import parse_message_id_from_filename
+
+    return parse_message_id_from_filename(filename)
 
 
 def _parse_timestamp_from_msgid(msgid: str) -> str:
-    """Convert YYYYMMDDTHHMMSSZ to ISO 8601 timestamp."""
+    """Convert message ID to ISO 8601 timestamp.
+
+    Handles both ``YYYYMMDDTHHMMSSZ`` and ``YYYYMMDDTHHMMSSZ-<hex>`` formats.
+    """
+    ts_part = msgid.split("-", 1)[0] if "-" in msgid else msgid
     try:
-        dt = datetime.strptime(msgid, "%Y%m%dT%H%M%SZ")
+        dt = datetime.strptime(ts_part, "%Y%m%dT%H%M%SZ")
         return dt.replace(tzinfo=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     except ValueError:
         return ""

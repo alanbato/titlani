@@ -298,15 +298,28 @@ class FileMailboxHandler(MessageHandler):
         return msg.to_bytes()
 
     def _store_message(self, mailbox: str, mailbox_path: Path, data: bytes) -> None:
-        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        from ..content.message_id import generate_message_id
+
+        timestamp = datetime.now(UTC)
+        timestamp_str = timestamp.strftime("%Y%m%dT%H%M%SZ")
+
+        # Extract sender for message ID generation
+        try:
+            msg = GemmailMessage.from_bytes(data)
+            sender = msg.senders[0].address if msg.senders else ""
+        except (ValueError, IndexError):
+            sender = ""
+        msg_id = generate_message_id(sender, timestamp)
+        stem = f"{timestamp_str}-{msg_id}"
+
         if self.encryption_manager and self.encryption_manager.has_key(mailbox):
-            filename = f"{timestamp}.gemmail.enc.new"
+            filename = f"{stem}.gemmail.enc.new"
             filepath = mailbox_path / filename
             encrypted = self.encryption_manager.encrypt(mailbox, data)
             filepath.write_bytes(encrypted)
             is_encrypted = True
         else:
-            filename = f"{timestamp}.gemmail.new"
+            filename = f"{stem}.gemmail.new"
             filepath = mailbox_path / filename
             filepath.write_bytes(data)
             is_encrypted = False

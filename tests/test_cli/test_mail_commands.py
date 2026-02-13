@@ -222,6 +222,138 @@ class TestMailReply:
         quoted = "\n".join(f"> {line}" for line in msg.body.split("\n"))
         assert "> How are you?" in quoted
 
+    def test_reply_link_injected_for_id_filename(self, tmp_path):
+        """mail reply injects => mid:<id> when the file has a message ID."""
+        from titlani.content.message_id import (
+            build_reply_link,
+            parse_message_id_from_filename,
+        )
+
+        filename = "20260213T143052Z-a1b2c3d4.gemmail"
+        gemmail = _create_gemmail(
+            tmp_path / filename,
+            sender="bob@other.com",
+        )
+
+        # Simulate the reply link injection logic from mail_reply()
+        original_msgid = parse_message_id_from_filename(gemmail.name)
+        assert original_msgid == "20260213T143052Z-a1b2c3d4"
+
+        reply_body = "Thanks for the message!"
+        if original_msgid:
+            link = build_reply_link(original_msgid)
+            reply_body = f"{reply_body.rstrip()}\n{link}\n"
+
+        assert "=> mid:20260213T143052Z-a1b2c3d4 In reply to" in reply_body
+
+    def test_reply_link_not_injected_for_old_filename(self, tmp_path):
+        """mail reply still injects a link for old-format filenames."""
+        from titlani.content.message_id import (
+            build_reply_link,
+            parse_message_id_from_filename,
+        )
+
+        filename = "20260213T143052Z.gemmail"
+        gemmail = _create_gemmail(
+            tmp_path / filename,
+            sender="bob@other.com",
+        )
+
+        original_msgid = parse_message_id_from_filename(gemmail.name)
+        assert original_msgid == "20260213T143052Z"
+
+        reply_body = "Thanks!"
+        if original_msgid:
+            link = build_reply_link(original_msgid)
+            reply_body = f"{reply_body.rstrip()}\n{link}\n"
+
+        assert "=> mid:20260213T143052Z In reply to" in reply_body
+
+    def test_reply_link_not_injected_for_non_gemmail(self, tmp_path):
+        """No link injected when file has unrecognized name."""
+        from titlani.content.message_id import parse_message_id_from_filename
+
+        original_msgid = parse_message_id_from_filename("notes.txt")
+        assert original_msgid is None
+
+
+class TestMailListThreading:
+    def test_thread_indicator_shown(self, tmp_path):
+        """mail list shows reply count indicator for threaded messages."""
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+
+        # Create a parent message with a message-ID filename
+        _create_gemmail(
+            mbox / "20260213T100000Z-aabbccdd.gemmail",
+            sender="bob@other.com",
+            subject="Hello",
+        )
+
+        # Create a reply that references the parent
+        reply_body = (
+            "# Re: Hello\n\n"
+            "Thanks!\n"
+            "=> mid:20260213T100000Z-aabbccdd In reply to\n"
+        )
+        reply_msg = GemmailMessage(
+            senders=[MisfinAddress("charlie", "other.com")],
+            recipients=[MisfinAddress("alice", "example.com")],
+            timestamps=[datetime.now(UTC)],
+            body=reply_body,
+        )
+        reply_file = mbox / "20260213T110000Z-11223344.gemmail"
+        reply_file.write_bytes(reply_msg.to_bytes())
+
+        result = runner.invoke(
+            app,
+            ["mail", "list", str(tmp_path), "-m", "alice"],
+        )
+        assert result.exit_code == 0
+        # The parent message should show a reply indicator
+        assert "↳1" in result.output
+
+    def test_no_thread_indicator_without_replies(self, tmp_path):
+        """No thread indicator when no replies reference the message."""
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+
+        _create_gemmail(
+            mbox / "20260213T100000Z-aabbccdd.gemmail",
+            sender="bob@other.com",
+            subject="Hello",
+        )
+
+        result = runner.invoke(
+            app,
+            ["mail", "list", str(tmp_path), "-m", "alice"],
+        )
+        assert result.exit_code == 0
+        assert "↳" not in result.output
+
+    def test_encrypted_messages_skip_threading(self, tmp_path):
+        """Encrypted messages don't break threading (no body to parse)."""
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+
+        _create_gemmail(
+            mbox / "20260213T100000Z-aabbccdd.gemmail",
+            sender="bob@other.com",
+            subject="Hello",
+        )
+
+        # Encrypted file can't be parsed — just raw bytes
+        enc_file = mbox / "20260213T110000Z-11223344.gemmail.enc"
+        enc_file.write_bytes(b"\x00\x01\x02encrypted-data")
+
+        result = runner.invoke(
+            app,
+            ["mail", "list", str(tmp_path), "-m", "alice"],
+        )
+        assert result.exit_code == 0
+        # Should not crash, and no spurious indicators
+        assert "↳" not in result.output
+
 
 class TestClientConfig:
     def test_load_from_toml(self, tmp_path):

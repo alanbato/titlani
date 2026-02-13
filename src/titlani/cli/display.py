@@ -303,16 +303,34 @@ def display_gemmail_message(msg: GemmailMessage, console: Console) -> None:
     )
 
 
+def _build_reply_counts(
+    messages: list[tuple[Path, GemmailMessage | None]],
+) -> dict[str, int]:
+    """Count how many replies reference each message ID."""
+    from ..content.message_id import extract_reply_to_ids
+
+    counts: dict[str, int] = {}
+    for _filepath, msg in messages:
+        if msg is None:
+            continue
+        for rid in extract_reply_to_ids(msg.body):
+            counts[rid] = counts.get(rid, 0) + 1
+    return counts
+
+
 def display_gemmail_list(
     messages: list[tuple[Path, GemmailMessage | None]],
     console: Console,
 ) -> None:
-    """Display a table of gemmail messages."""
+    """Display a table of gemmail messages with thread indicators."""
+    from ..content.message_id import parse_message_id_from_filename
     from .mailbox import is_new_message
 
     if not messages:
         console.print("[yellow]No messages found.[/]")
         return
+
+    reply_counts = _build_reply_counts(messages)
 
     new_count = sum(1 for fp, _ in messages if is_new_message(fp))
     title = f"Messages ({len(messages)})"
@@ -326,10 +344,13 @@ def display_gemmail_list(
     table.add_column("Subject")
 
     for idx, (filepath, msg) in enumerate(messages, start=1):
-        # Parse timestamp from filename (e.g. 20260208T194757Z)
+        msgid = parse_message_id_from_filename(filepath.name)
+
         stem = _extract_timestamp_stem(filepath)
         try:
-            dt = datetime.strptime(stem, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+            dt = datetime.strptime(stem, "%Y%m%dT%H%M%SZ").replace(
+                tzinfo=UTC
+            )
             time_display = dt.strftime("%Y-%m-%d %H:%M")
         except ValueError:
             time_display = stem
@@ -340,11 +361,20 @@ def display_gemmail_list(
             sender = "[dim]encrypted[/]"
             subject = "[yellow][ENC][/]"
         else:
-            sender = msg.senders[0].long_form if msg.senders else "[dim]anonymous[/]"
+            sender = (
+                msg.senders[0].long_form
+                if msg.senders
+                else "[dim]anonymous[/]"
+            )
             subject = msg.subject or "[dim]no subject[/]"
 
         if is_new:
             subject = f"[bold green]NEW[/] {subject}"
+
+        # Append thread reply count indicator
+        if msgid and reply_counts.get(msgid, 0) > 0:
+            n = reply_counts[msgid]
+            subject += f" [dim](↳{n})[/]"
 
         table.add_row(str(idx), time_display, sender, subject)
 
@@ -354,13 +384,17 @@ def display_gemmail_list(
 def _extract_timestamp_stem(filepath: Path) -> str:
     """Extract the timestamp portion from a gemmail filename.
 
-    Handles: 20260208T194757Z.gemmail, .gemmail.new, .gemmail.enc, .gemmail.enc.new
+    Handles both old (``YYYYMMDDTHHMMSSZ.gemmail``) and new
+    (``YYYYMMDDTHHMMSSZ-<hex>.gemmail``) filename formats.
+    Returns just the timestamp part for display.
     """
-    name = filepath.name
-    for suffix in (".gemmail.enc.new", ".gemmail.enc", ".gemmail.new", ".gemmail"):
-        if name.endswith(suffix):
-            return name[: -len(suffix)]
-    return filepath.stem
+    from ..content.message_id import parse_message_id_from_filename
+
+    msgid = parse_message_id_from_filename(filepath.name)
+    if msgid is None:
+        return filepath.stem
+    # Strip hash suffix if present so timestamp renders cleanly
+    return msgid.split("-", 1)[0] if "-" in msgid else msgid
 
 
 def display_version_info(console: Console) -> None:
