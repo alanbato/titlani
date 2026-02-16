@@ -48,7 +48,7 @@ def list_create(
         raise typer.Exit(code=1)
 
     try:
-        list_path.mkdir(parents=True)
+        list_path.mkdir(mode=0o700, parents=True)
         subscribers_file = list_path / SUBSCRIBERS_FILE
         subscribers_file.write_text(
             "# Mailing list subscribers\n# One address per line (mailbox@hostname)\n"

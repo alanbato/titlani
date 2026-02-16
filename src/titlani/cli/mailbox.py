@@ -29,15 +29,55 @@ def resolve_mailbox_dir(explicit: Path | None, error_console: Console) -> Path:
     default.mkdir(parents=True, exist_ok=True)
     user = os.environ.get("USER")
     if user:
-        (default / user).mkdir(exist_ok=True)
+        create_mailbox_subdir(default, user)
     return default
 
 
-def resolve_mailbox_name(explicit: str | None) -> str | None:
-    """Resolve mailbox name: explicit arg -> $USER -> None."""
-    if explicit is not None:
-        return explicit
-    return os.environ.get("USER")
+def get_current_mailbox(error_console: Console) -> str:
+    """Get the current user's mailbox name from $USER."""
+    user = os.environ.get("USER")
+    if not user:
+        error_console.print("Cannot determine mailbox: $USER not set")
+        raise SystemExit(1)
+    return user
+
+
+def verify_mailbox_access(
+    mailbox_path: Path, error_console: Console
+) -> None:
+    """Verify the current process owns the mailbox directory.
+
+    Compares the directory's UID against ``os.getuid()``.  If the
+    directory does not exist yet there is nothing to protect, so
+    the check is skipped.
+    """
+    try:
+        dir_uid = mailbox_path.stat().st_uid
+    except FileNotFoundError:
+        return  # Not yet created, nothing to protect
+    except OSError as e:
+        error_console.print(f"Error checking mailbox permissions: {e}")
+        raise SystemExit(1) from e
+
+    if dir_uid != os.getuid():
+        error_console.print(
+            f"Permission denied: mailbox '{mailbox_path.name}' "
+            "is not owned by you"
+        )
+        raise SystemExit(1)
+
+
+def create_mailbox_subdir(mailbox_dir: Path, mailbox: str) -> Path:
+    """Create a mailbox subdirectory with 0o700 permissions."""
+    path = mailbox_dir / mailbox
+    try:
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(path, 0o700)
+    except OSError as e:
+        raise OSError(
+            f"Failed to create or secure mailbox '{path}': {e}"
+        ) from e
+    return path
 
 
 def list_messages(
@@ -76,11 +116,14 @@ def list_messages(
                 messages.append((gemmail_file, None))
             else:
                 try:
-                    msg = GemmailMessage.from_bytes(gemmail_file.read_bytes())
+                    msg = GemmailMessage.from_bytes(
+                        gemmail_file.read_bytes()
+                    )
                     messages.append((gemmail_file, msg))
-                except ValueError:
+                except (ValueError, OSError, UnicodeDecodeError) as e:
                     error_console.print(
-                        f"[yellow]Skipping invalid file: {gemmail_file.name}[/]"
+                        f"[yellow]Skipping {gemmail_file.name}: "
+                        f"{e}[/]"
                     )
 
     return messages

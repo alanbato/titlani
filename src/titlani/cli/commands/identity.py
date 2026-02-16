@@ -138,9 +138,12 @@ def identity_generate(
             shutil.copy2(cert_file, dest_pem)
             console.print(f"\n[green]Installed:[/] {dest_pem}")
 
-            # Ensure mailbox subdirectory exists
-            mailbox_subdir = server_config.server.mailbox_dir / mailbox
-            mailbox_subdir.mkdir(parents=True, exist_ok=True)
+            # Ensure mailbox subdirectory exists with secure permissions
+            from ...cli.mailbox import create_mailbox_subdir
+
+            mailbox_subdir = create_mailbox_subdir(
+                server_config.server.mailbox_dir, mailbox
+            )
             console.print(f"[green]Mailbox dir:[/] {mailbox_subdir}")
 
             console.print(

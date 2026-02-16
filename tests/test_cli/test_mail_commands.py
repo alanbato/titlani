@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from titlani.__main__ import app
@@ -91,7 +92,8 @@ class TestMailDelete:
         assert result.exit_code == 0
         assert not gemmail.exists()
 
-    def test_delete_by_index(self, tmp_path):
+    def test_delete_by_index(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
         f1 = _create_gemmail(mbox / "20250110T153045Z.gemmail", subject="Old")
@@ -99,7 +101,7 @@ class TestMailDelete:
 
         result = runner.invoke(
             app,
-            ["mail", "delete", "1", "-d", str(tmp_path), "-m", "alice", "-f"],
+            ["mail", "delete", "1", "-d", str(tmp_path), "-f"],
         )
         assert result.exit_code == 0
         assert "Deleted 1" in result.output
@@ -107,7 +109,8 @@ class TestMailDelete:
         assert not f2.exists()
         assert f1.exists()
 
-    def test_delete_by_multiple_indices(self, tmp_path):
+    def test_delete_by_multiple_indices(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
         f1 = _create_gemmail(mbox / "20250110T153045Z.gemmail", subject="Old")
@@ -122,8 +125,6 @@ class TestMailDelete:
                 "2",
                 "-d",
                 str(tmp_path),
-                "-m",
-                "alice",
                 "-f",
             ],
         )
@@ -132,14 +133,15 @@ class TestMailDelete:
         assert not f1.exists()
         assert not f2.exists()
 
-    def test_delete_by_invalid_index(self, tmp_path):
+    def test_delete_by_invalid_index(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
         _create_gemmail(mbox / "20250110T153045Z.gemmail")
 
         result = runner.invoke(
             app,
-            ["mail", "delete", "99", "-d", str(tmp_path), "-m", "alice", "-f"],
+            ["mail", "delete", "99", "-d", str(tmp_path), "-f"],
         )
         assert result.exit_code == 1
         assert "Invalid message index" in result.output
@@ -278,8 +280,9 @@ class TestMailReply:
 
 
 class TestMailListThreading:
-    def test_thread_indicator_shown(self, tmp_path):
+    def test_thread_indicator_shown(self, tmp_path, monkeypatch):
         """mail list shows reply count indicator for threaded messages."""
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
 
@@ -307,14 +310,15 @@ class TestMailListThreading:
 
         result = runner.invoke(
             app,
-            ["mail", "list", str(tmp_path), "-m", "alice"],
+            ["mail", "list", str(tmp_path)],
         )
         assert result.exit_code == 0
         # The parent message should show a reply indicator
         assert "↳1" in result.output
 
-    def test_no_thread_indicator_without_replies(self, tmp_path):
+    def test_no_thread_indicator_without_replies(self, tmp_path, monkeypatch):
         """No thread indicator when no replies reference the message."""
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
 
@@ -326,13 +330,14 @@ class TestMailListThreading:
 
         result = runner.invoke(
             app,
-            ["mail", "list", str(tmp_path), "-m", "alice"],
+            ["mail", "list", str(tmp_path)],
         )
         assert result.exit_code == 0
         assert "↳" not in result.output
 
-    def test_encrypted_messages_skip_threading(self, tmp_path):
+    def test_encrypted_messages_skip_threading(self, tmp_path, monkeypatch):
         """Encrypted messages don't break threading (no body to parse)."""
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
 
@@ -348,7 +353,7 @@ class TestMailListThreading:
 
         result = runner.invoke(
             app,
-            ["mail", "list", str(tmp_path), "-m", "alice"],
+            ["mail", "list", str(tmp_path)],
         )
         assert result.exit_code == 0
         # Should not crash, and no spurious indicators
@@ -378,8 +383,6 @@ class TestClientConfig:
         assert config.mailbox_dir == Path("/tmp/mailboxes")
 
     def test_missing_mailbox_dir_key_raises(self, tmp_path):
-        import pytest
-
         config_file = tmp_path / "config.toml"
         config_file.write_text("[mail]\n")
         with pytest.raises(ValueError, match="mailbox_dir"):
@@ -394,8 +397,6 @@ class TestClientConfig:
         assert config.mailbox_dir == Path("/srv/misfin/mail")
 
     def test_server_config_fallback_missing_key_raises(self, tmp_path):
-        import pytest
-
         server_toml = tmp_path / "server.toml"
         server_toml.write_text('[server]\nhost = "localhost"\n')
         config_file = tmp_path / "config.toml"
@@ -415,46 +416,50 @@ class TestClientConfig:
 
 
 class TestMailBlock:
-    def test_block_creates_file(self, tmp_path):
+    def test_block_creates_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
         result = runner.invoke(
             app,
-            ["mail", "block", "spam@evil.com", "-d", str(tmp_path), "-m", "alice"],
+            ["mail", "block", "spam@evil.com", "-d", str(tmp_path)],
         )
         assert result.exit_code == 0
         assert "Blocked" in result.output
         blocked = (mbox / ".blocked").read_text()
         assert "spam@evil.com" in blocked
 
-    def test_block_duplicate_is_noop(self, tmp_path):
+    def test_block_duplicate_is_noop(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
         (mbox / ".blocked").write_text("spam@evil.com\n")
         result = runner.invoke(
             app,
-            ["mail", "block", "spam@evil.com", "-d", str(tmp_path), "-m", "alice"],
+            ["mail", "block", "spam@evil.com", "-d", str(tmp_path)],
         )
         assert result.exit_code == 0
         assert "already blocked" in result.output
 
-    def test_block_invalid_address(self, tmp_path):
+    def test_block_invalid_address(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
         result = runner.invoke(
             app,
-            ["mail", "block", "not-an-address", "-d", str(tmp_path), "-m", "alice"],
+            ["mail", "block", "not-an-address", "-d", str(tmp_path)],
         )
         assert result.exit_code == 1
         assert "Invalid address" in result.output
 
-    def test_unblock_removes_address(self, tmp_path):
+    def test_unblock_removes_address(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
         (mbox / ".blocked").write_text("spam@evil.com\nother@bad.com\n")
         result = runner.invoke(
             app,
-            ["mail", "unblock", "spam@evil.com", "-d", str(tmp_path), "-m", "alice"],
+            ["mail", "unblock", "spam@evil.com", "-d", str(tmp_path)],
         )
         assert result.exit_code == 0
         assert "Unblocked" in result.output
@@ -462,30 +467,33 @@ class TestMailBlock:
         assert "spam@evil.com" not in blocked
         assert "other@bad.com" in blocked
 
-    def test_unblock_last_address_removes_file(self, tmp_path):
+    def test_unblock_last_address_removes_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
         (mbox / ".blocked").write_text("spam@evil.com\n")
         result = runner.invoke(
             app,
-            ["mail", "unblock", "spam@evil.com", "-d", str(tmp_path), "-m", "alice"],
+            ["mail", "unblock", "spam@evil.com", "-d", str(tmp_path)],
         )
         assert result.exit_code == 0
         assert not (mbox / ".blocked").exists()
 
-    def test_unblock_nonexistent_is_noop(self, tmp_path):
+    def test_unblock_nonexistent_is_noop(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
         result = runner.invoke(
             app,
-            ["mail", "unblock", "nobody@here.com", "-d", str(tmp_path), "-m", "alice"],
+            ["mail", "unblock", "nobody@here.com", "-d", str(tmp_path)],
         )
         assert result.exit_code == 0
         assert "was not blocked" in result.output
 
 
 class TestUnreadTracking:
-    def test_new_messages_show_new_indicator(self, tmp_path):
+    def test_new_messages_show_new_indicator(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
         _create_gemmail(
@@ -500,7 +508,7 @@ class TestUnreadTracking:
         )
         result = runner.invoke(
             app,
-            ["mail", "list", str(tmp_path), "-m", "alice"],
+            ["mail", "list", str(tmp_path)],
         )
         assert result.exit_code == 0
         assert "NEW" in result.output
@@ -550,7 +558,8 @@ class TestUnreadTracking:
         assert not new_file.exists()
         assert (mbox / "20250110T153045Z.gemmail").exists()
 
-    def test_no_new_messages_no_count(self, tmp_path):
+    def test_no_new_messages_no_count(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
         _create_gemmail(
@@ -559,7 +568,7 @@ class TestUnreadTracking:
         )
         result = runner.invoke(
             app,
-            ["mail", "list", str(tmp_path), "-m", "alice"],
+            ["mail", "list", str(tmp_path)],
         )
         assert result.exit_code == 0
         # Title should be "Messages (1)" without "(X new)"
@@ -582,11 +591,12 @@ class TestMailListDefaults:
         )
         return tmp_path
 
-    def test_explicit_dir_works(self, tmp_path):
+    def test_explicit_dir_works(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mailbox_dir = self._setup_mailbox(tmp_path)
         result = runner.invoke(
             app,
-            ["mail", "list", str(mailbox_dir), "-m", "alice"],
+            ["mail", "list", str(mailbox_dir)],
         )
         assert result.exit_code == 0
         assert "First" in result.output
@@ -618,11 +628,12 @@ class TestMailListDefaults:
         assert result.exit_code == 0
         assert "First" in result.output
 
-    def test_row_numbers_in_output(self, tmp_path):
+    def test_row_numbers_in_output(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mailbox_dir = self._setup_mailbox(tmp_path)
         result = runner.invoke(
             app,
-            ["mail", "list", str(mailbox_dir), "-m", "alice"],
+            ["mail", "list", str(mailbox_dir)],
         )
         assert result.exit_code == 0
         # Row numbers 1 and 2 should appear in the table
@@ -670,7 +681,8 @@ class TestMailReadByIndex:
         assert result.exit_code == 0
         assert "Newer message" in result.output
 
-    def test_read_by_index_with_explicit_dir(self, tmp_path):
+    def test_read_by_index_with_explicit_dir(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
         mailbox_dir = self._setup_mailbox(tmp_path)
         result = runner.invoke(
             app,
@@ -680,8 +692,6 @@ class TestMailReadByIndex:
                 "2",
                 "-d",
                 str(mailbox_dir),
-                "-m",
-                "alice",
             ],
         )
         assert result.exit_code == 0
@@ -726,3 +736,63 @@ class TestMailReadByIndex:
         assert "Newer message" in result1.output
         result2 = runner.invoke(app, ["mail", "read", "2"])
         assert "Older message" in result2.output
+
+
+class TestMailboxOwnershipVerification:
+    """Tests for OS-user-based mailbox access control."""
+
+    def test_access_own_mailbox_succeeds(self, tmp_path, monkeypatch):
+        """User can access their own mailbox (dir owned by them)."""
+        monkeypatch.setenv("USER", "alice")
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        _create_gemmail(mbox / "20250110T153045Z.gemmail", subject="Mine")
+
+        result = runner.invoke(app, ["mail", "list", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "Mine" in result.output
+
+    def test_access_other_users_mailbox_denied(self, tmp_path, monkeypatch):
+        """User cannot access a mailbox owned by a different UID."""
+        import os
+
+        monkeypatch.setenv("USER", "bob")
+        mbox = tmp_path / "bob"
+        mbox.mkdir()
+        _create_gemmail(mbox / "20250110T153045Z.gemmail", subject="Secret")
+
+        # Fake the ownership check: make getuid return a different UID
+        # than the directory owner
+        real_uid = os.getuid()
+        monkeypatch.setattr("os.getuid", lambda: real_uid + 1)
+
+        result = runner.invoke(app, ["mail", "list", str(tmp_path)])
+        assert result.exit_code != 0
+        assert "Permission denied" in result.output
+
+    def test_create_mailbox_subdir_sets_700(self, tmp_path):
+        """create_mailbox_subdir sets 0o700 on the directory."""
+        import stat
+
+        from titlani.cli.mailbox import create_mailbox_subdir
+
+        path = create_mailbox_subdir(tmp_path, "testuser")
+        mode = stat.S_IMODE(path.stat().st_mode)
+        assert mode == 0o700
+
+    def test_default_mailbox_auto_created_with_700(
+        self, tmp_path, monkeypatch
+    ):
+        """Default mailbox auto-creation uses secure permissions."""
+        import stat
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("USER", "testuser")
+        runner.invoke(app, ["mail", "list"])
+
+        mbox = tmp_path / "data" / "titlani" / "mail" / "testuser"
+        assert mbox.is_dir()
+        mode = stat.S_IMODE(mbox.stat().st_mode)
+        assert mode == 0o700
+

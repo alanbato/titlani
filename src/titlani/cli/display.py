@@ -13,7 +13,7 @@ from rich.table import Table
 
 from ..content.gemmail import GemmailMessage
 from ..identity.certificate import MisfinIdentity
-from ..protocol.status import interpret_status
+from ..protocol.status import interpret_status, is_success
 from ..server.config import ServerConfig
 
 # -- Formatting helpers --
@@ -64,6 +64,12 @@ def _validity_style(not_after_iso: str) -> tuple[str, str]:
     return "green", f"{days} days remaining"
 
 
+def _looks_like_fingerprint(value: str) -> bool:
+    """Check if a meta string looks like a hex fingerprint."""
+    clean = value.replace(":", "").replace(" ", "").lower()
+    return len(clean) >= 16 and all(c in "0123456789abcdef" for c in clean)
+
+
 def _status_color(status: int) -> str:
     if 20 <= status < 30:
         return "green"
@@ -83,7 +89,10 @@ def format_status_response(status: int, meta: str, console: Console) -> None:
     desc = interpret_status(status)
     console.print(f"[{color}][{status}] {desc}[/]")
     if meta:
-        console.print(f"  {meta}")
+        if is_success(status) and _looks_like_fingerprint(meta):
+            console.print(f"  [dim]{format_fingerprint(meta)}[/]")
+        else:
+            console.print(f"  [dim]{meta}[/]")
 
 
 def display_identity_info(

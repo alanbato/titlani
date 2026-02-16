@@ -2,6 +2,7 @@
 
 import typer
 
+from .admin import admin_app
 from .identity import identity_app
 from .init import init
 from .list import list_app
@@ -23,6 +24,7 @@ app.command()(init)
 app.command()(send)
 app.command()(serve)
 app.command()(version)
+app.add_typer(admin_app, name="admin")
 app.add_typer(identity_app, name="identity")
 app.add_typer(tofu_app, name="tofu")
 app.add_typer(list_app, name="list")
