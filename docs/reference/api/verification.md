@@ -1,6 +1,6 @@
 # Verification API
 
-Sender verification via probe-based challenge.
+Sender verification via probe-based challenge or SPKI-based TOFU.
 
 ## VerifyingHandler
 
@@ -16,6 +16,13 @@ Sender verification via probe-based challenge.
       show_source: true
       members_order: source
 
+## SPKIVerifier
+
+::: titlani.verification.spki_verifier.SPKIVerifier
+    options:
+      show_source: true
+      members_order: source
+
 ## SenderVerificationCache
 
 ::: titlani.verification.cache.SenderVerificationCache
@@ -26,6 +33,12 @@ Sender verification via probe-based challenge.
 ## VerificationMode
 
 ::: titlani.verification.verifier.VerificationMode
+    options:
+      show_source: true
+
+## VerificationMethod
+
+::: titlani.verification.verifier.VerificationMethod
     options:
       show_source: true
 

@@ -24,6 +24,7 @@ def _build_server_toml(
     gmap_port: int,
     verification_enable: bool,
     verification_mode: str,
+    verification_method: str,
     encryption_enable: bool,
     auto_reply_enable: bool,
     auto_reply_interval: int,
@@ -47,8 +48,12 @@ def _build_server_toml(
     ]
     if verification_enable:
         lines.append(f'mode = "{verification_mode}"')
+        lines.append(f'method = "{verification_method}"')
+        if verification_method == "spki":
+            lines.append('# spki_on_change = "reject"')
     else:
         lines.append('# mode = "optional"')
+        lines.append('# method = "probe"')
     lines += [
         "# cache_ttl = 604800",
         "# probe_timeout = 10.0",
@@ -151,6 +156,7 @@ def init(
 
     # Step 3: Detail prompts for enabled features
     verification_mode = "off"
+    verification_method = "probe"
     auto_reply_interval = 86400
     rate_limit_capacity = 10
     rate_limit_refill_rate = 1.0
@@ -181,6 +187,15 @@ def init(
         if verification_mode not in ("optional", "required"):
             error_console.print(f"Invalid verification mode: {verification_mode!r}")
             raise typer.Exit(code=1)
+        verification_method = typer.prompt(
+            "Verification method (probe/spki)",
+            default="probe",
+        )
+        if verification_method not in ("probe", "spki"):
+            error_console.print(
+                f"Invalid verification method: {verification_method!r}"
+            )
+            raise typer.Exit(code=1)
 
     if auto_reply_enable:
         auto_reply_interval = typer.prompt(
@@ -205,6 +220,7 @@ def init(
         gmap_port=gmap_port,
         verification_enable=verification_enable,
         verification_mode=verification_mode,
+        verification_method=verification_method,
         encryption_enable=encryption_enable,
         auto_reply_enable=auto_reply_enable,
         auto_reply_interval=auto_reply_interval,

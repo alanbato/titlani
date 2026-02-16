@@ -39,6 +39,7 @@ ALL_FEATURES_INPUT = "\n".join(
         "y",  # access control
         "",  # GMAP port: default 1960
         "required",  # verification mode
+        "probe",  # verification method
         "3600",  # auto-reply interval
         "20",  # rate limit capacity
         "2.0",  # refill rate
@@ -99,6 +100,7 @@ class TestInitWizard:
         assert config.gmap.enable is True
         assert config.gmap.port == 1960
         assert config.verification.mode == "required"
+        assert config.verification.method == "probe"
         assert config.encryption.enable is True
         assert config.auto_reply.enable is True
         assert config.auto_reply.interval == 3600

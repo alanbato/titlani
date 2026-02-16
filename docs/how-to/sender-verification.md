@@ -1,6 +1,9 @@
 # Sender Verification
 
-The Titlani server can verify that incoming messages originate from senders whose mailbox actually exists on the claimed server. This uses probe-based verification: the server sends a zero-length message to the sender's address and checks whether the sender's server responds with a valid fingerprint.
+The Titlani server can verify that incoming messages originate from legitimate senders. Two verification methods are available:
+
+- **Probe-based** (default): sends a zero-length message to the sender's address and checks whether the sender's server responds with a valid fingerprint.
+- **SPKI-based**: connects to the sender's server via TLS, extracts the Subject Public Key Info (SPKI) hash from its certificate, and caches it using a TOFU model. Cryptographically stronger than probe-based verification.
 
 ## Enable in Config
 
@@ -9,6 +12,7 @@ Add a `[verification]` section to your TOML config:
 ```toml
 [verification]
 mode = "optional"
+method = "probe"  # or "spki"
 ```
 
 ## Parameters
@@ -16,8 +20,11 @@ mode = "optional"
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `mode` | string | `"off"` | Verification mode: `"off"`, `"optional"`, or `"required"` |
+| `method` | string | `"probe"` | Verification method: `"probe"` or `"spki"` |
 | `cache_path` | string | — | Path to SQLite cache file (defaults to `<mailbox_dir>/verification_cache.db`) |
-| `probe_timeout` | float | `10.0` | Timeout in seconds for verification probes |
+| `cache_ttl` | int | `604800` | Cache time-to-live in seconds (7 days) |
+| `probe_timeout` | float | `10.0` | Timeout in seconds for verification probes and SPKI connections |
+| `spki_on_change` | string | `"reject"` | Action when a server's SPKI changes: `"reject"` or `"accept"` |
 
 ## Modes
 
@@ -135,17 +142,72 @@ handler = VerifyingHandler(
 )
 ```
 
+## SPKI-Based Verification
+
+SPKI verification uses a TOFU (Trust On First Use) model for server identity at the TLS certificate level. This is cryptographically stronger than probe-based verification — it verifies the server's public key rather than just confirming a mailbox exists.
+
+### How It Works
+
+1. On first contact with a server, Titlani connects via TLS and extracts the SHA-256 hash of the server certificate's Subject Public Key Info (SPKI)
+2. The hash is cached in SQLite (same database as probe verification)
+3. While the cache entry is valid (within `cache_ttl`), subsequent messages from that server are verified without a network call
+4. When the entry expires, the server is re-checked and its current SPKI compared against the last known value
+5. If the SPKI has changed, behavior depends on `spki_on_change`:
+   - `"reject"` (default): reject the message — the operator should investigate
+   - `"accept"`: accept the new key and update the cache (less secure, but handles key rotation)
+
+### Enable SPKI Verification
+
+```toml
+[verification]
+mode = "required"
+method = "spki"
+spki_on_change = "reject"
+```
+
+### Programmatic Usage
+
+```python
+from titlani.verification import (
+    SPKIVerifier,
+    SenderVerificationCache,
+    VerificationMode,
+    VerifyingHandler,
+)
+
+cache = SenderVerificationCache(Path("verification.db"))
+verifier = SPKIVerifier(
+    cache=cache,
+    port=1958,
+    timeout=10.0,
+    on_spki_change="reject",
+)
+
+handler = VerifyingHandler(
+    wrapped=base_handler,
+    verifier=verifier,
+    mode=VerificationMode.REQUIRED,
+)
+```
+
 ## What Verification Proves
 
-Probe-based verification confirms that:
+**Probe-based** verification confirms that:
 
 - The sender's hostname has a running Misfin server
 - The claimed mailbox exists on that server
 - The server responds to probes with a fingerprint
 
-It does **not** prove that the connecting client is the owner of that mailbox. For that, TLS client certificate verification would be needed (see [Security Model](../explanation/security-model.md#sender-verification)).
+**SPKI-based** verification confirms that:
 
-## Full Example
+- The sender's server presents the same TLS certificate public key as when first seen
+- The server identity has not changed (TOFU model)
+
+Neither method proves that the connecting client is the owner of that mailbox. For that, TLS client certificate verification would be needed (see [Security Model](../explanation/security-model.md#sender-verification)).
+
+## Full Examples
+
+### Probe-based (default)
 
 ```toml
 [server]
@@ -159,6 +221,28 @@ mailbox_dir = "/var/mail/misfin"
 [verification]
 mode = "required"
 probe_timeout = 5.0
+
+[rate_limit]
+enable = true
+capacity = 10
+```
+
+### SPKI-based
+
+```toml
+[server]
+host = "0.0.0.0"
+port = 1958
+hostname = "mail.example.com"
+certfile = "server.pem"
+keyfile = "server.key"
+mailbox_dir = "/var/mail/misfin"
+
+[verification]
+mode = "required"
+method = "spki"
+cache_ttl = 604800
+spki_on_change = "reject"
 
 [rate_limit]
 enable = true

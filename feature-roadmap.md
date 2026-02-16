@@ -53,7 +53,7 @@ Future features for Titlani, documented with implementation sketches. These are 
 
 **Description**: Implement the Gemini Mailbox Access Protocol (GMAP) for remote mailbox access over Gemini, as specified at `gemini://satch.xyz/misfin/gmap.gmi`.
 
-**Status**: Implemented (core scope). Message retrieval, tag management, deletion, and auto-tagging (Inbox/Unread). Protocol multiplexer on port 1958 detects `gemini://` vs `misfin://`. JSON index per mailbox. Client cert authentication. Enable with `[gmap] enable = true`.
+**Status**: Implemented (core scope). Message retrieval, tag management, deletion, and auto-tagging (Inbox/Unread). GMAP runs on a separate port (default 1960) alongside Misfin (port 1958), each with its own TLS context. JSON index per mailbox. Client cert authentication. Enable with `[gmap] enable = true`.
 
 **Not yet implemented**: Sent mail forwarding via GMAP address, draft storage, encrypted message retrieval (returns status 40).
 
