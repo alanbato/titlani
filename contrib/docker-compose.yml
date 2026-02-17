@@ -1,0 +1,16 @@
+services:
+  titlani:
+    build:
+      context: ..
+      dockerfile: contrib/Dockerfile
+    ports:
+      - "1958:1958"
+      - "1960:1960"
+    volumes:
+      - ./config.docker.toml:/etc/titlani/config.toml:ro
+      - certs:/etc/titlani/certs:ro
+      - mailboxes:/var/lib/titlani/mailboxes
+
+volumes:
+  certs:
+  mailboxes:

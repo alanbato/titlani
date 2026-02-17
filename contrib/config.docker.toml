@@ -1,0 +1,33 @@
+# Titlani server configuration for Docker deployment
+# Mount your TLS certificates into /etc/titlani/certs/
+
+[server]
+host = "0.0.0.0"
+port = 1958
+hostname = "mail.example.com"
+mailbox_dir = "/var/lib/titlani/mailboxes"
+certfile = "/etc/titlani/certs/server.pem"
+keyfile = "/etc/titlani/certs/server.key"
+identity_certfile = "/etc/titlani/certs/identity.pem"
+identity_keyfile = "/etc/titlani/certs/identity.key"
+
+[rate_limit]
+enable = true
+capacity = 10.0
+refill_rate = 1.0
+retry_after = 30
+
+[access_control]
+enable = false
+allow_list = []
+deny_list = []
+default_allow = true
+
+[verification]
+mode = "optional"
+cache_path = "/var/lib/titlani/verification_cache.db"
+probe_timeout = 10.0
+
+[encryption]
+enable = false
+# key_dir = "/etc/titlani/keys"
