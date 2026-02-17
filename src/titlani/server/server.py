@@ -2,8 +2,6 @@
 
 import asyncio
 import os
-import shutil
-import tempfile
 from pathlib import Path
 
 from cryptography.x509 import load_pem_x509_certificate
@@ -108,51 +106,94 @@ def _setup_encryption(
 
 def _ensure_certificates(
     config: ServerConfig,
-) -> tuple[Path, Path, Path, Path, str | None]:
+) -> tuple[Path, Path, Path, Path]:
     """Ensure server and identity certificates exist, auto-generating if needed.
 
-    Returns (certfile, keyfile, identity_certfile, identity_keyfile, tmp_dir).
+    When certfile/keyfile are set in config but don't exist on disk, generates
+    them at those exact paths.  When they are None (legacy configs), falls back
+    to generating inside ``mailbox_dir/.auto-certs/``.
+
+    Returns (certfile, keyfile, identity_certfile, identity_keyfile).
     """
     certfile = config.server.certfile
     keyfile = config.server.keyfile
-    tmp_dir = None
 
-    if certfile is None or keyfile is None:
-        tmp_dir = tempfile.mkdtemp(prefix="titlani_")
-        cert_pem, key_pem = generate_self_signed_cert(
-            config.server.hostname, "Titlani Misfin Server"
-        )
-        certfile = Path(tmp_dir) / "server.pem"
-        keyfile = Path(tmp_dir) / "server.key"
-        certfile.write_bytes(cert_pem)
-        keyfile.write_bytes(key_pem)
-        os.chmod(keyfile, 0o600)
-        logger.info(
-            "auto_generated_server_cert",
-            hostname=config.server.hostname,
-        )
+    if certfile is not None and keyfile is not None:
+        # Config specifies paths — generate only if the files are missing
+        if not certfile.exists() or not keyfile.exists():
+            certfile.parent.mkdir(parents=True, exist_ok=True)
+            keyfile.parent.mkdir(parents=True, exist_ok=True)
+            cert_pem, key_pem = generate_self_signed_cert(
+                config.server.hostname, "Titlani Misfin Server"
+            )
+            certfile.write_bytes(cert_pem)
+            keyfile.write_bytes(key_pem)
+            os.chmod(keyfile, 0o600)
+            logger.info(
+                "auto_generated_server_cert",
+                hostname=config.server.hostname,
+                certfile=str(certfile),
+            )
+    else:
+        # No cert paths in config — use a stable directory alongside mailboxes
+        auto_dir = config.server.mailbox_dir / ".auto-certs"
+        auto_dir.mkdir(parents=True, exist_ok=True)
+        certfile = auto_dir / "server.pem"
+        keyfile = auto_dir / "server.key"
+        if not certfile.exists() or not keyfile.exists():
+            cert_pem, key_pem = generate_self_signed_cert(
+                config.server.hostname, "Titlani Misfin Server"
+            )
+            certfile.write_bytes(cert_pem)
+            keyfile.write_bytes(key_pem)
+            os.chmod(keyfile, 0o600)
+            logger.info(
+                "auto_generated_server_cert",
+                hostname=config.server.hostname,
+                certfile=str(certfile),
+            )
 
     identity_certfile = config.server.identity_certfile
     identity_keyfile = config.server.identity_keyfile
-    if identity_certfile is None or identity_keyfile is None:
-        if tmp_dir is None:
-            tmp_dir = tempfile.mkdtemp(prefix="titlani_")
-        id_cert_pem, id_key_pem = generate_identity_cert(
-            mailbox="postmaster",
-            hostname=config.server.hostname,
-            blurb=f"Misfin Server ({config.server.hostname})",
-        )
-        identity_certfile = Path(tmp_dir) / "identity.pem"
-        identity_keyfile = Path(tmp_dir) / "identity.key"
-        identity_certfile.write_bytes(id_cert_pem)
-        identity_keyfile.write_bytes(id_key_pem)
-        os.chmod(identity_keyfile, 0o600)
-        logger.info(
-            "auto_generated_identity_cert",
-            hostname=config.server.hostname,
-        )
 
-    return certfile, keyfile, identity_certfile, identity_keyfile, tmp_dir
+    if identity_certfile is not None and identity_keyfile is not None:
+        if not identity_certfile.exists() or not identity_keyfile.exists():
+            identity_certfile.parent.mkdir(parents=True, exist_ok=True)
+            identity_keyfile.parent.mkdir(parents=True, exist_ok=True)
+            id_cert_pem, id_key_pem = generate_identity_cert(
+                mailbox="postmaster",
+                hostname=config.server.hostname,
+                blurb=f"Misfin Server ({config.server.hostname})",
+            )
+            identity_certfile.write_bytes(id_cert_pem)
+            identity_keyfile.write_bytes(id_key_pem)
+            os.chmod(identity_keyfile, 0o600)
+            logger.info(
+                "auto_generated_identity_cert",
+                hostname=config.server.hostname,
+                certfile=str(identity_certfile),
+            )
+    else:
+        auto_dir = config.server.mailbox_dir / ".auto-certs"
+        auto_dir.mkdir(parents=True, exist_ok=True)
+        identity_certfile = auto_dir / "identity.pem"
+        identity_keyfile = auto_dir / "identity.key"
+        if not identity_certfile.exists() or not identity_keyfile.exists():
+            id_cert_pem, id_key_pem = generate_identity_cert(
+                mailbox="postmaster",
+                hostname=config.server.hostname,
+                blurb=f"Misfin Server ({config.server.hostname})",
+            )
+            identity_certfile.write_bytes(id_cert_pem)
+            identity_keyfile.write_bytes(id_key_pem)
+            os.chmod(identity_keyfile, 0o600)
+            logger.info(
+                "auto_generated_identity_cert",
+                hostname=config.server.hostname,
+                certfile=str(identity_certfile),
+            )
+
+    return certfile, keyfile, identity_certfile, identity_keyfile
 
 
 def _build_middleware(config: ServerConfig) -> MiddlewareChain | None:
@@ -286,9 +327,7 @@ async def start_server(
     configure_logging(log_level=log_level)
     config.validate_files()
 
-    certfile, keyfile, identity_certfile, identity_keyfile, tmp_dir = (
-        _ensure_certificates(config)
-    )
+    certfile, keyfile, identity_certfile, identity_keyfile = _ensure_certificates(config)
 
     # Create TLS context
     # NOTE: request_client_cert=False because OpenSSL 3.x with CERT_OPTIONAL
@@ -381,6 +420,4 @@ async def start_server(
     finally:
         if cache is not None:
             cache.close()
-        if tmp_dir is not None:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
         logger.info("server_stopped")

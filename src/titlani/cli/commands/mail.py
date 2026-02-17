@@ -50,9 +50,15 @@ def mail_list(
         None,
         help="Path to mailbox directory (auto-detected from config if omitted)",
     ),
+    mailbox_name: str | None = typer.Option(
+        None,
+        "--mailbox",
+        "-m",
+        help="Mailbox name (defaults to $USER)",
+    ),
 ) -> None:
     """List messages in your mailbox."""
-    mailbox = get_current_mailbox(error_console)
+    mailbox = get_current_mailbox(error_console, explicit=mailbox_name)
     resolved_dir = resolve_mailbox_dir(mailbox_dir, error_console)
     verify_mailbox_access(resolved_dir / mailbox, error_console)
     messages = list_messages(resolved_dir, mailbox, error_console)
@@ -89,6 +95,12 @@ def mail_search(
         "-d",
         help="Mailbox directory",
     ),
+    mailbox_name: str | None = typer.Option(
+        None,
+        "--mailbox",
+        "-m",
+        help="Mailbox name (defaults to $USER)",
+    ),
     encryption_key: Path | None = typer.Option(
         None,
         "--encryption-key",
@@ -107,7 +119,7 @@ def mail_search(
         )
         raise typer.Exit(code=1)
 
-    mailbox = get_current_mailbox(error_console)
+    mailbox = get_current_mailbox(error_console, explicit=mailbox_name)
     resolved_dir = resolve_mailbox_dir(mailbox_dir, error_console)
     verify_mailbox_access(resolved_dir / mailbox, error_console)
     messages = list_messages(resolved_dir, mailbox, error_console)
@@ -183,6 +195,12 @@ def mail_read(
         "-d",
         help="Mailbox directory",
     ),
+    mailbox_name: str | None = typer.Option(
+        None,
+        "--mailbox",
+        "-m",
+        help="Mailbox name (defaults to $USER)",
+    ),
     encryption_key: Path | None = typer.Option(
         None,
         "--encryption-key",
@@ -195,7 +213,7 @@ def mail_read(
     ),
 ) -> None:
     """Read and display a gemmail message."""
-    gemmail_file = _resolve_message_path(message, mailbox_dir)
+    gemmail_file = _resolve_message_path(message, mailbox_dir, mailbox_name=mailbox_name)
 
     try:
         if ".enc" in gemmail_file.suffixes:
@@ -233,6 +251,12 @@ def mail_delete(
         "-d",
         help="Mailbox directory",
     ),
+    mailbox_name: str | None = typer.Option(
+        None,
+        "--mailbox",
+        "-m",
+        help="Mailbox name (defaults to $USER)",
+    ),
     force: bool = typer.Option(
         False,
         "--force",
@@ -251,7 +275,9 @@ def mail_delete(
 
         if index is not None:
             if cached_messages is None:
-                resolved_mailbox = get_current_mailbox(error_console)
+                resolved_mailbox = get_current_mailbox(
+                    error_console, explicit=mailbox_name
+                )
                 resolved_dir = resolve_mailbox_dir(mailbox_dir, error_console)
                 verify_mailbox_access(resolved_dir / resolved_mailbox, error_console)
                 cached_messages = list_messages(
@@ -461,6 +487,9 @@ def mail_block(
     mailbox_dir: Path | None = typer.Option(
         None, "--mailbox-dir", "-d", help="Mailbox directory"
     ),
+    mailbox_name: str | None = typer.Option(
+        None, "--mailbox", "-m", help="Mailbox name (defaults to $USER)"
+    ),
 ) -> None:
     """Block a sender address from delivering mail."""
     if "@" not in address:
@@ -468,7 +497,7 @@ def mail_block(
         raise typer.Exit(code=1)
 
     address = address.strip().lower()
-    mbox_path = _resolve_mailbox_path(mailbox_dir)
+    mbox_path = _resolve_mailbox_path(mailbox_dir, mailbox_name=mailbox_name)
     blocked_file = mbox_path / ".blocked"
 
     existing = _read_blocked_set(blocked_file)
@@ -487,10 +516,13 @@ def mail_unblock(
     mailbox_dir: Path | None = typer.Option(
         None, "--mailbox-dir", "-d", help="Mailbox directory"
     ),
+    mailbox_name: str | None = typer.Option(
+        None, "--mailbox", "-m", help="Mailbox name (defaults to $USER)"
+    ),
 ) -> None:
     """Remove a sender address from the block list."""
     address = address.strip().lower()
-    mbox_path = _resolve_mailbox_path(mailbox_dir)
+    mbox_path = _resolve_mailbox_path(mailbox_dir, mailbox_name=mailbox_name)
     blocked_file = mbox_path / ".blocked"
 
     if not blocked_file.exists():
@@ -514,9 +546,12 @@ def mail_unblock(
     console.print(f"[green]Unblocked {address}[/]")
 
 
-def _resolve_mailbox_path(mailbox_dir: Path | None) -> Path:
+def _resolve_mailbox_path(
+    mailbox_dir: Path | None,
+    mailbox_name: str | None = None,
+) -> Path:
     """Resolve to the current user's mailbox subdirectory path."""
-    mailbox = get_current_mailbox(error_console)
+    mailbox = get_current_mailbox(error_console, explicit=mailbox_name)
     resolved_dir = resolve_mailbox_dir(mailbox_dir, error_console)
     mbox_path = resolved_dir / mailbox
     verify_mailbox_access(mbox_path, error_console)
@@ -553,6 +588,7 @@ def _write_blocked_set(blocked_file: Path, addresses: set[str]) -> None:
 def _resolve_message_path(
     message: str,
     mailbox_dir: Path | None,
+    mailbox_name: str | None = None,
 ) -> Path:
     """Resolve a message argument (index or file path) to a Path."""
     try:
@@ -561,7 +597,7 @@ def _resolve_message_path(
         index = None
 
     if index is not None:
-        resolved_mailbox = get_current_mailbox(error_console)
+        resolved_mailbox = get_current_mailbox(error_console, explicit=mailbox_name)
         resolved_dir = resolve_mailbox_dir(mailbox_dir, error_console)
         verify_mailbox_access(resolved_dir / resolved_mailbox, error_console)
         messages = list_messages(resolved_dir, resolved_mailbox, error_console)

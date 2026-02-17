@@ -13,6 +13,7 @@ runner = CliRunner()
 DEFAULT_INPUT = "\n".join(
     [
         "",  # hostname: localhost
+        "",  # host: localhost (default for localhost hostname)
         "",  # port: 1958
         "",  # mailbox_dir: default
         "n",  # GMAP
@@ -29,6 +30,7 @@ DEFAULT_INPUT = "\n".join(
 ALL_FEATURES_INPUT = "\n".join(
     [
         "mail.example.com",  # hostname
+        "",  # host: 0.0.0.0 (default for non-localhost hostname)
         "1959",  # port
         "/tmp/mail",  # mailbox_dir
         "y",  # GMAP

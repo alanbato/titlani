@@ -1,3 +1,14 @@
+# Titlani Misfin Mail Server — simple systemd service
+#
+# Single-user deployment. Before installing:
+#   1. Create a dedicated user:  sudo useradd --system --shell /usr/sbin/nologin titlani
+#   2. Find the binary path:     which titlani
+#   3. Replace /usr/local/bin/titlani below with the real path
+#   4. Copy config to /etc/titlani/server.toml
+#   5. Install:  sudo cp titlani.service /etc/systemd/system/
+#                sudo systemctl daemon-reload
+#                sudo systemctl enable --now titlani
+
 [Unit]
 Description=Titlani Misfin Mail Server
 Documentation=https://github.com/alanbato/titlani
@@ -6,24 +17,27 @@ Wants=network-online.target
 
 [Service]
 Type=exec
-ExecStart=/usr/bin/titlani serve --config /etc/titlani/config.toml
+# Update this path to match your installation (run: which titlani)
+ExecStart=/usr/local/bin/titlani serve --config /etc/titlani/server.toml
+
+# Run as a dedicated system user (create with useradd --system titlani)
+User=titlani
+Group=titlani
 
 # State and configuration directories
 StateDirectory=titlani
 ConfigurationDirectory=titlani
 
-# Dynamic user for isolation
-DynamicUser=yes
-
-# Security hardening
-ProtectSystem=strict
-ProtectHome=yes
+# Basic security hardening
 NoNewPrivileges=yes
+ProtectSystem=strict
 PrivateTmp=yes
 RestrictAddressFamilies=AF_INET AF_INET6
-MemoryDenyWriteExecute=yes
 SystemCallFilter=@system-service
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Allow writing to /var/lib/titlani (StateDirectory) and /etc/titlani (ConfigurationDirectory)
+ReadWritePaths=/var/lib/titlani /etc/titlani
 
 # Restart policy
 Restart=on-failure

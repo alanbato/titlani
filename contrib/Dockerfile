@@ -25,4 +25,4 @@ EXPOSE 1960
 USER titlani
 
 ENTRYPOINT ["titlani"]
-CMD ["serve", "--config", "/etc/titlani/config.toml"]
+CMD ["serve", "--config", "/etc/titlani/server.toml"]

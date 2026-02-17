@@ -33,8 +33,17 @@ def resolve_mailbox_dir(explicit: Path | None, error_console: Console) -> Path:
     return default
 
 
-def get_current_mailbox(error_console: Console) -> str:
-    """Get the current user's mailbox name from $USER."""
+def get_current_mailbox(
+    error_console: Console,
+    explicit: str | None = None,
+) -> str:
+    """Get the mailbox name.
+
+    If *explicit* is provided it is returned directly, otherwise falls
+    back to the ``$USER`` environment variable.
+    """
+    if explicit:
+        return explicit
     user = os.environ.get("USER")
     if not user:
         error_console.print("Cannot determine mailbox: $USER not set")

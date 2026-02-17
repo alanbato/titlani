@@ -92,6 +92,14 @@ Practical recipes for common tasks. Each guide focuses on a single goal and assu
 
     [:octicons-arrow-right-24: Guide](gmap.md)
 
+-   :material-server:{ .lg .middle } **Deploy to Production**
+
+    ---
+
+    End-to-end guide for systemd and Docker deployments, client setup, and troubleshooting.
+
+    [:octicons-arrow-right-24: Guide](deploy-to-production.md)
+
 -   :material-puzzle:{ .lg .middle } **Custom Message Handler**
 
     ---

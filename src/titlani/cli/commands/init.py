@@ -18,6 +18,7 @@ DEFAULT_CONFIG_DIR = user_config_path("titlani")
 def _build_server_toml(
     *,
     hostname: str,
+    host: str,
     port: int,
     mailbox_dir: str,
     gmap_enable: bool,
@@ -37,12 +38,13 @@ def _build_server_toml(
     lines = [
         "[server]",
         f'hostname = "{hostname}"',
+        f'host = "{host}"',
         f"port = {port}",
         f'mailbox_dir = "{mailbox_dir}"',
-        '# certfile = "server.pem"',
-        '# keyfile = "server.key"',
-        '# identity_certfile = "identity.pem"',
-        '# identity_keyfile = "identity.key"',
+        'certfile = "server.pem"',
+        'keyfile = "server.key"',
+        'identity_certfile = "identity.pem"',
+        'identity_keyfile = "identity.key"',
         "",
         "[verification]",
     ]
@@ -138,6 +140,8 @@ def init(
     # Step 1: Essentials
     console.print("\n[bold]Step 1: Essentials[/]\n")
     hostname = typer.prompt("Hostname for mail routing", default="localhost")
+    default_host = "0.0.0.0" if hostname != "localhost" else "localhost"
+    host = typer.prompt("Bind address", default=default_host)
     port = typer.prompt("Port", default=DEFAULT_PORT, type=int)
     mailbox_dir = typer.prompt("Mailbox directory", default=str(default_mailbox_dir()))
 
@@ -212,6 +216,7 @@ def init(
     # Step 4: Write files
     server_toml = _build_server_toml(
         hostname=hostname,
+        host=host,
         port=port,
         mailbox_dir=mailbox_dir,
         gmap_enable=gmap_enable,

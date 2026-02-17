@@ -122,6 +122,7 @@ nav:
       - At-Rest Encryption: how-to/at-rest-encryption.md
       - Mailing Lists: how-to/mailing-lists.md
       - GMAP (Remote Mailbox Access): how-to/gmap.md
+      - Deploy to Production: how-to/deploy-to-production.md
       - Custom Message Handler: how-to/custom-message-handler.md
       - Compose Gemmail: how-to/compose-gemmail.md
   - Reference:

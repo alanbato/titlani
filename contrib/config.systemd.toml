@@ -1,5 +1,5 @@
 # Titlani server configuration for systemd deployment
-# Copy to /etc/titlani/config.toml
+# Copy to /etc/titlani/server.toml
 
 [server]
 host = "0.0.0.0"

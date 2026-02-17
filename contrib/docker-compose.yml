@@ -7,7 +7,7 @@ services:
       - "1958:1958"
       - "1960:1960"
     volumes:
-      - ./config.docker.toml:/etc/titlani/config.toml:ro
+      - ./config.docker.toml:/etc/titlani/server.toml:ro
       - certs:/etc/titlani/certs:ro
       - mailboxes:/var/lib/titlani/mailboxes
 
