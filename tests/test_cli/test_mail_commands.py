@@ -738,6 +738,192 @@ class TestMailReadByIndex:
         assert "Older message" in result2.output
 
 
+class TestMailSearch:
+    def _setup_mailbox(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        _create_gemmail(
+            mbox / "20250110T153045Z.gemmail",
+            sender="bob@other.com",
+            body="Let's meet for coffee tomorrow.\n",
+            subject="Coffee plans",
+        )
+        _create_gemmail(
+            mbox / "20250111T100000Z.gemmail",
+            sender="carol@example.org",
+            body="The project deadline is next Friday.\n",
+            subject="Project update",
+        )
+        _create_gemmail(
+            mbox / "20250112T120000Z.gemmail",
+            sender="bob@other.com",
+            body="Sounds good, see you then!\n",
+            subject="Re: Coffee plans",
+        )
+        return tmp_path
+
+    def test_search_by_query_matches_subject(self, tmp_path, monkeypatch):
+        mailbox_dir = self._setup_mailbox(tmp_path, monkeypatch)
+        result = runner.invoke(
+            app, ["mail", "search", "coffee", "-d", str(mailbox_dir)]
+        )
+        assert result.exit_code == 0
+        assert "Messages (2)" in result.output
+        assert "Coffee plans" in result.output
+        assert "Project update" not in result.output
+
+    def test_search_by_query_matches_body(self, tmp_path, monkeypatch):
+        mailbox_dir = self._setup_mailbox(tmp_path, monkeypatch)
+        result = runner.invoke(
+            app, ["mail", "search", "deadline", "-d", str(mailbox_dir)]
+        )
+        assert result.exit_code == 0
+        assert "Project update" in result.output
+        assert "Coffee" not in result.output
+
+    def test_search_by_query_matches_sender(self, tmp_path, monkeypatch):
+        mailbox_dir = self._setup_mailbox(tmp_path, monkeypatch)
+        result = runner.invoke(
+            app, ["mail", "search", "carol", "-d", str(mailbox_dir)]
+        )
+        assert result.exit_code == 0
+        assert "Project update" in result.output
+        assert "Coffee" not in result.output
+
+    def test_search_case_insensitive(self, tmp_path, monkeypatch):
+        mailbox_dir = self._setup_mailbox(tmp_path, monkeypatch)
+        result = runner.invoke(
+            app, ["mail", "search", "COFFEE", "-d", str(mailbox_dir)]
+        )
+        assert result.exit_code == 0
+        assert "Coffee plans" in result.output
+
+    def test_search_no_results(self, tmp_path, monkeypatch):
+        mailbox_dir = self._setup_mailbox(tmp_path, monkeypatch)
+        result = runner.invoke(
+            app, ["mail", "search", "nonexistent", "-d", str(mailbox_dir)]
+        )
+        assert result.exit_code == 0
+        assert "No messages found" in result.output
+
+    def test_search_from_filter(self, tmp_path, monkeypatch):
+        mailbox_dir = self._setup_mailbox(tmp_path, monkeypatch)
+        result = runner.invoke(
+            app,
+            ["mail", "search", "--from", "carol", "-d", str(mailbox_dir)],
+        )
+        assert result.exit_code == 0
+        assert "Project update" in result.output
+        assert "Coffee" not in result.output
+
+    def test_search_subject_filter(self, tmp_path, monkeypatch):
+        mailbox_dir = self._setup_mailbox(tmp_path, monkeypatch)
+        result = runner.invoke(
+            app,
+            [
+                "mail", "search",
+                "--subject", "project",
+                "-d", str(mailbox_dir),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Project update" in result.output
+        assert "Coffee" not in result.output
+
+    def test_search_body_filter(self, tmp_path, monkeypatch):
+        mailbox_dir = self._setup_mailbox(tmp_path, monkeypatch)
+        result = runner.invoke(
+            app,
+            [
+                "mail", "search",
+                "--body", "Friday",
+                "-d", str(mailbox_dir),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Project update" in result.output
+        assert "Coffee" not in result.output
+
+    def test_search_combined_filters_and_logic(self, tmp_path, monkeypatch):
+        """--from and --subject combine with AND logic."""
+        mailbox_dir = self._setup_mailbox(tmp_path, monkeypatch)
+        result = runner.invoke(
+            app,
+            [
+                "mail", "search",
+                "--from", "bob",
+                "--subject", "Re:",
+                "-d", str(mailbox_dir),
+            ],
+        )
+        assert result.exit_code == 0
+        # Only the "Re: Coffee plans" from bob matches both filters
+        assert "Messages (1)" in result.output
+
+    def test_search_query_plus_filter(self, tmp_path, monkeypatch):
+        """Positional query AND --from filter combine."""
+        mailbox_dir = self._setup_mailbox(tmp_path, monkeypatch)
+        result = runner.invoke(
+            app,
+            [
+                "mail", "search", "coffee",
+                "--from", "carol",
+                "-d", str(mailbox_dir),
+            ],
+        )
+        assert result.exit_code == 0
+        # carol didn't send any coffee messages
+        assert "No messages found" in result.output
+
+    def test_search_no_query_no_filters_fails(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        result = runner.invoke(
+            app, ["mail", "search", "-d", str(tmp_path)]
+        )
+        assert result.exit_code == 1
+        assert "Provide a search query" in result.output
+
+    def test_search_encrypted_skipped_without_key(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("USER", "alice")
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        _create_gemmail(
+            mbox / "20250110T153045Z.gemmail",
+            sender="bob@other.com",
+            subject="Visible",
+        )
+        enc_file = mbox / "20250111T100000Z.gemmail.enc"
+        enc_file.write_bytes(b"\x00\x01\x02encrypted")
+
+        result = runner.invoke(
+            app, ["mail", "search", "Visible", "-d", str(tmp_path)]
+        )
+        assert result.exit_code == 0
+        assert "Visible" in result.output
+        assert "1 encrypted" in result.output
+
+    def test_search_new_messages_shown(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USER", "alice")
+        mbox = tmp_path / "alice"
+        mbox.mkdir()
+        _create_gemmail(
+            mbox / "20250110T153045Z.gemmail.new",
+            sender="bob@other.com",
+            subject="Unread match",
+        )
+        result = runner.invoke(
+            app, ["mail", "search", "Unread", "-d", str(tmp_path)]
+        )
+        assert result.exit_code == 0
+        assert "Messages (1)" in result.output
+        assert "1 new" in result.output
+
+
 class TestMailboxOwnershipVerification:
     """Tests for OS-user-based mailbox access control."""
 

@@ -1,4 +1,4 @@
-"""Mail commands: list, read, delete, reply."""
+"""Mail commands: list, search, read, delete, reply."""
 
 import asyncio
 import os
@@ -57,6 +57,123 @@ def mail_list(
     verify_mailbox_access(resolved_dir / mailbox, error_console)
     messages = list_messages(resolved_dir, mailbox, error_console)
     display_gemmail_list(messages, console)
+
+
+@mail_app.command("search")
+def mail_search(
+    query: str | None = typer.Argument(
+        None,
+        help="Text to search for across all fields (sender, subject, body)",
+    ),
+    from_filter: str | None = typer.Option(
+        None,
+        "--from",
+        "-f",
+        help="Filter by sender address or name",
+    ),
+    subject_filter: str | None = typer.Option(
+        None,
+        "--subject",
+        "-s",
+        help="Filter by subject text",
+    ),
+    body_filter: str | None = typer.Option(
+        None,
+        "--body",
+        "-b",
+        help="Filter by body text",
+    ),
+    mailbox_dir: Path | None = typer.Option(
+        None,
+        "--mailbox-dir",
+        "-d",
+        help="Mailbox directory",
+    ),
+    encryption_key: Path | None = typer.Option(
+        None,
+        "--encryption-key",
+        "-e",
+        help="Path to X25519 private key for decrypting .enc messages",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+) -> None:
+    """Search messages by sender, subject, or body text."""
+    if not query and not from_filter and not subject_filter and not body_filter:
+        error_console.print(
+            "Provide a search query or at least one filter "
+            "(--from, --subject, --body)"
+        )
+        raise typer.Exit(code=1)
+
+    mailbox = get_current_mailbox(error_console)
+    resolved_dir = resolve_mailbox_dir(mailbox_dir, error_console)
+    verify_mailbox_access(resolved_dir / mailbox, error_console)
+    messages = list_messages(resolved_dir, mailbox, error_console)
+
+    matches: list[tuple[Path, GemmailMessage | None]] = []
+    encrypted_skipped = 0
+
+    for filepath, msg in messages:
+        if msg is None:
+            # Encrypted — try decrypting if key provided
+            if encryption_key:
+                try:
+                    msg = read_encrypted_message(
+                        filepath, encryption_key, error_console
+                    )
+                except (typer.Exit, Exception):
+                    encrypted_skipped += 1
+                    continue
+            else:
+                encrypted_skipped += 1
+                continue
+
+        if _message_matches(msg, query, from_filter, subject_filter, body_filter):
+            matches.append((filepath, msg))
+
+    display_gemmail_list(matches, console)
+    if encrypted_skipped:
+        console.print(
+            f"[dim]({encrypted_skipped} encrypted message(s) skipped)[/]"
+        )
+
+
+def _message_matches(
+    msg: GemmailMessage,
+    query: str | None,
+    from_filter: str | None,
+    subject_filter: str | None,
+    body_filter: str | None,
+) -> bool:
+    """Check if a message matches the search criteria (AND logic)."""
+    if query:
+        q = query.lower()
+        sender_text = " ".join(s.long_form for s in msg.senders).lower()
+        subject_text = (msg.subject or "").lower()
+        body_text = msg.body.lower()
+        if q not in sender_text and q not in subject_text and q not in body_text:
+            return False
+
+    if from_filter:
+        f = from_filter.lower()
+        sender_text = " ".join(s.long_form for s in msg.senders).lower()
+        if f not in sender_text:
+            return False
+
+    if subject_filter:
+        s = subject_filter.lower()
+        if s not in (msg.subject or "").lower():
+            return False
+
+    if body_filter:
+        b = body_filter.lower()
+        if b not in msg.body.lower():
+            return False
+
+    return True
 
 
 @mail_app.command("read")
