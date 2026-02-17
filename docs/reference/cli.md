@@ -214,7 +214,7 @@ titlani tofu revoke <hostname> [OPTIONS]
 List messages in a mailbox directory.
 
 ```bash
-titlani mail list [mailbox_dir] [OPTIONS]
+titlani mail list [mailbox_dir]
 ```
 
 **Arguments:**
@@ -223,11 +223,7 @@ titlani mail list [mailbox_dir] [OPTIONS]
 |----------|-------------|
 | `mailbox_dir` | Path to mailbox directory (optional — auto-detected from [client config](configuration.md#client-configuration) if omitted) |
 
-**Options:**
-
-| Option | Short | Default | Description |
-|--------|-------|---------|-------------|
-| `--mailbox` | `-m` | `$USER` | Filter by specific mailbox name (defaults to current OS user) |
+The mailbox name is always derived from the current OS user (`$USER`).
 
 Messages are listed newest-first with a `#` index column. You can pass the index number to `mail read` to open a message directly.
 
@@ -241,11 +237,54 @@ Encrypted messages (`.gemmail.enc`) are shown with an encrypted indicator.
 # Auto-detect mailbox directory from config, mailbox from $USER
 titlani mail list
 
-# Explicit directory, auto-detect mailbox
+# Explicit directory
 titlani mail list /var/mail/misfin
+```
 
-# Explicit directory and mailbox
-titlani mail list /var/mail/misfin --mailbox alice
+---
+
+## `mail search`
+
+Search messages by sender, subject, or body text.
+
+```bash
+titlani mail search [query] [OPTIONS]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `query` | Text to search for across all fields (optional if filters are provided) |
+
+**Options:**
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--from` | `-f` | — | Filter by sender address or name |
+| `--subject` | `-s` | — | Filter by subject text |
+| `--body` | `-b` | — | Filter by body text |
+| `--mailbox-dir` | `-d` | — | Mailbox directory (auto-detected from [client config](configuration.md#client-configuration) if omitted) |
+| `--encryption-key` | `-e` | — | Path to X25519 private key for decrypting `.enc` messages |
+
+At least one of `query`, `--from`, `--subject`, or `--body` must be provided. When multiple filters are used, they are combined with AND logic — a message must match all filters.
+
+Encrypted messages are skipped unless `--encryption-key` is provided.
+
+**Examples:**
+
+```bash
+# Search across all fields
+titlani mail search "meeting notes"
+
+# Filter by sender
+titlani mail search --from alice@example.com
+
+# Combine filters (AND logic)
+titlani mail search --from alice --subject "project" --body "deadline"
+
+# Search encrypted messages too
+titlani mail search "budget" --encryption-key ~/.titlani/alice.enc.key
 ```
 
 ---
@@ -269,10 +308,9 @@ titlani mail read <message> [OPTIONS]
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--mailbox-dir` | `-d` | — | Mailbox directory for index resolution (auto-detected from [client config](configuration.md#client-configuration) if omitted) |
-| `--mailbox` | `-m` | `$USER` | Mailbox name for index resolution (defaults to current OS user) |
 | `--encryption-key` | `-e` | — | Path to X25519 private key for decryption |
 
-When using an index, the mailbox directory and name are resolved the same way as `mail list` — from explicit options, then client config, then `$USER`.
+When using an index, the mailbox directory is resolved from the explicit option, then client config. The mailbox name is derived from `$USER`.
 
 Reading an unread message (`.gemmail.new`) automatically marks it as read by renaming it to `.gemmail`. This happens after the message is displayed.
 
@@ -284,8 +322,8 @@ For `.gemmail.enc` files, the CLI auto-discovers `<mailbox>.enc.key` from the ma
 # Read message #2 from the listing (uses config + $USER)
 titlani mail read 2
 
-# Read by index with explicit directory and mailbox
-titlani mail read 1 -d /var/mail/misfin -m alice
+# Read by index with explicit directory
+titlani mail read 1 -d /var/mail/misfin
 
 # Read by file path (still works)
 titlani mail read mailboxes/alice/message.gemmail.enc \
@@ -349,12 +387,14 @@ titlani mail block <address> [OPTIONS]
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--mailbox-dir` | `-d` | — | Mailbox directory (auto-detected from [client config](configuration.md#client-configuration) if omitted) |
-| `--mailbox` | `-m` | `$USER` | Mailbox name |
+
+The mailbox name is derived from `$USER`.
 
 **Example:**
 
 ```bash
-titlani mail block spam@evil.com --mailbox alice
+titlani mail block spam@evil.com
+titlani mail block spam@evil.com -d /var/mail/misfin
 ```
 
 See [Contact Blocking](../how-to/contact-blocking.md) for details.
@@ -380,12 +420,13 @@ titlani mail unblock <address> [OPTIONS]
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--mailbox-dir` | `-d` | — | Mailbox directory (auto-detected from [client config](configuration.md#client-configuration) if omitted) |
-| `--mailbox` | `-m` | `$USER` | Mailbox name |
+
+The mailbox name is derived from `$USER`.
 
 **Example:**
 
 ```bash
-titlani mail unblock spam@evil.com --mailbox alice
+titlani mail unblock spam@evil.com
 ```
 
 ---
@@ -395,20 +436,175 @@ titlani mail unblock spam@evil.com --mailbox alice
 Delete one or more stored messages.
 
 ```bash
-titlani mail delete <files...> [OPTIONS]
+titlani mail delete <messages...> [OPTIONS]
 ```
 
 **Arguments:**
 
 | Argument | Description |
 |----------|-------------|
-| `files` | Paths to `.gemmail` or `.gemmail.enc` files to delete |
+| `messages` | Message indices (from `mail list`) or paths to `.gemmail`/`.gemmail.enc` files |
 
 **Options:**
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
+| `--mailbox-dir` | `-d` | — | Mailbox directory for index resolution (auto-detected from [client config](configuration.md#client-configuration) if omitted) |
 | `--force` | `-f` | `false` | Skip confirmation prompt |
+
+**Examples:**
+
+```bash
+# Delete by index
+titlani mail delete 3
+
+# Delete multiple messages by index
+titlani mail delete 1 2 5
+
+# Delete by file path
+titlani mail delete mailboxes/alice/message.gemmail
+
+# Skip confirmation
+titlani mail delete 1 2 --force
+```
+
+---
+
+## `admin fixperms`
+
+Fix permissions on mailbox directories. Sets each mailbox subdirectory to mode `0700` and warns about ownership mismatches.
+
+```bash
+titlani admin fixperms [OPTIONS]
+```
+
+**Options:**
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--mailbox-dir` | `-d` | — | Mailbox directory (auto-detected if omitted) |
+| `--dry-run` | — | `false` | Show what would be changed without making changes |
+
+**Examples:**
+
+```bash
+# Audit permissions (dry run)
+titlani admin fixperms --dry-run
+
+# Fix permissions
+titlani admin fixperms
+
+# Explicit directory
+titlani admin fixperms -d /var/mail/misfin
+```
+
+---
+
+## `list create`
+
+Create a new mailing list mailbox.
+
+```bash
+titlani list create <listname> [OPTIONS]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `listname` | Mailing list name (alphanumeric, dots, dashes, underscores) |
+
+**Options:**
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--mailbox-dir` | `-d` | — | Mailbox directory |
+
+**Example:**
+
+```bash
+titlani list create dev-announce
+```
+
+---
+
+## `list subscribers`
+
+Show subscribers for a mailing list.
+
+```bash
+titlani list subscribers <listname> [OPTIONS]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `listname` | Mailing list name |
+
+**Options:**
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--mailbox-dir` | `-d` | — | Mailbox directory |
+
+---
+
+## `list add`
+
+Add a subscriber to a mailing list.
+
+```bash
+titlani list add <listname> <address> [OPTIONS]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `listname` | Mailing list name |
+| `address` | Subscriber address (`mailbox@hostname`) |
+
+**Options:**
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--mailbox-dir` | `-d` | — | Mailbox directory |
+
+**Example:**
+
+```bash
+titlani list add dev-announce alice@example.com
+```
+
+---
+
+## `list remove`
+
+Remove a subscriber from a mailing list.
+
+```bash
+titlani list remove <listname> <address> [OPTIONS]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `listname` | Mailing list name |
+| `address` | Subscriber address to remove |
+
+**Options:**
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--mailbox-dir` | `-d` | — | Mailbox directory |
+
+**Example:**
+
+```bash
+titlani list remove dev-announce alice@example.com
+```
 
 ---
 
@@ -425,6 +621,39 @@ titlani verification list [OPTIONS]
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--cache` | `-c` | — | Path to verification cache database |
+
+---
+
+## `verification spki list`
+
+List all cached server SPKI hashes.
+
+```bash
+titlani verification spki list [OPTIONS]
+```
+
+**Options:**
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--cache` | `-c` | — | Path to verification cache database |
+
+---
+
+## `verification spki clear`
+
+Clear all cached server SPKI hashes.
+
+```bash
+titlani verification spki clear [OPTIONS]
+```
+
+**Options:**
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--cache` | `-c` | — | Path to verification cache database |
+| `--force` | `-f` | `false` | Skip confirmation prompt |
 
 ---
 

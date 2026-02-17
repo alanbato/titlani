@@ -8,7 +8,7 @@ Technical reference for Titlani's CLI, configuration, protocol, and Python API.
 
     ---
 
-    All `titlani` commands: `send`, `serve`, `identity`, `tofu`, and `version`.
+    All `titlani` commands: `init`, `send`, `serve`, `mail`, `identity`, `tofu`, `list`, `admin`, `verification`, and `version`.
 
     [:octicons-arrow-right-24: CLI Reference](cli.md)
 
@@ -16,7 +16,7 @@ Technical reference for Titlani's CLI, configuration, protocol, and Python API.
 
     ---
 
-    TOML config file format: `[server]`, `[rate_limit]`, `[access_control]`, `[verification]`, `[encryption]`, `[gmap]`.
+    TOML config file format: `[server]`, `[rate_limit]`, `[access_control]`, `[verification]`, `[encryption]`, `[gmap]`, `[auto_reply]`, `[lists]`.
 
     [:octicons-arrow-right-24: Configuration](configuration.md)
 

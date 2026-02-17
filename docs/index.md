@@ -62,7 +62,7 @@ Titlani is a complete implementation of the [Misfin(C)](https://misfin.org/) mai
 === "Python API"
 
     ```python
-    from titlani import MisfinClient, MisfinAddress
+    from titlani import MisfinClient
 
     async with MisfinClient(
         client_cert="alice.pem",

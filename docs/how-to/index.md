@@ -76,6 +76,14 @@ Practical recipes for common tasks. Each guide focuses on a single goal and assu
 
     [:octicons-arrow-right-24: Guide](at-rest-encryption.md)
 
+-   :material-format-list-bulleted:{ .lg .middle } **Mailing Lists**
+
+    ---
+
+    Create server-side mailing lists with subscriber management and message forwarding.
+
+    [:octicons-arrow-right-24: Guide](mailing-lists.md)
+
 -   :material-mailbox:{ .lg .middle } **GMAP (Remote Mailbox Access)**
 
     ---

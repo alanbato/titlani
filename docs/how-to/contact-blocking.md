@@ -16,21 +16,21 @@ mailboxes/
 ## Block a Sender via CLI
 
 ```bash
-titlani mail block spam@evil.com --mailbox alice
+titlani mail block spam@evil.com
 ```
 
-This creates or appends to the `.blocked` file in Alice's mailbox directory.
+This creates or appends to the `.blocked` file in the current user's mailbox directory (mailbox name derived from `$USER`).
 
 To specify a non-default mailbox directory:
 
 ```bash
-titlani mail block spam@evil.com -d /var/mail/misfin -m alice
+titlani mail block spam@evil.com -d /var/mail/misfin
 ```
 
 ## Unblock a Sender
 
 ```bash
-titlani mail unblock spam@evil.com --mailbox alice
+titlani mail unblock spam@evil.com
 ```
 
 If the address was the only entry, the `.blocked` file is removed entirely.

@@ -32,7 +32,7 @@ The config file is optional. If absent, you must pass `mailbox_dir` as a CLI arg
 
 ## Server Configuration
 
-The Titlani server is configured via a TOML file with five sections.
+The Titlani server is configured via a TOML file with eight sections.
 
 ## `[server]`
 
@@ -48,6 +48,7 @@ Core server settings.
 | `mailbox_dir` | string | `"mailboxes"` | Directory containing mailbox subdirectories |
 | `identity_certfile` | string | — | Path to server identity certificate |
 | `identity_keyfile` | string | — | Path to server identity private key |
+| `identity_cert_dir` | string | `<mailbox_dir>` | Directory for per-mailbox identity certificates (used by GMAP for client cert authentication) |
 
 !!! note
     If `certfile`/`keyfile` are omitted, temporary TLS certificates are auto-generated.
@@ -79,13 +80,16 @@ Allow list takes priority over deny list.
 
 ## `[verification]`
 
-Probe-based sender verification. See [Sender Verification](../how-to/sender-verification.md) for details.
+Sender verification. See [Sender Verification](../how-to/sender-verification.md) for details.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `mode` | string | `"off"` | Verification mode: `"off"`, `"optional"`, or `"required"` |
+| `method` | string | `"probe"` | Verification method: `"probe"` or `"spki"` |
 | `cache_path` | string | `<mailbox_dir>/verification_cache.db` | Path to SQLite verification cache |
-| `probe_timeout` | float | `10.0` | Timeout in seconds for verification probes |
+| `cache_ttl` | int | `604800` | Cache time-to-live in seconds (default: 7 days) |
+| `probe_timeout` | float | `10.0` | Timeout in seconds for verification probes and SPKI connections |
+| `spki_on_change` | string | `"reject"` | Action when a server's SPKI changes: `"reject"` or `"accept"` |
 
 ## `[encryption]`
 
@@ -123,6 +127,17 @@ Server-side auto-reply for out-of-office messages. See [Auto-Reply](../how-to/au
 
 When enabled, the server checks for a `.auto-reply` file in the recipient's mailbox directory after each delivery. If present, it sends the file contents as a reply with subject `[Auto-Reply]`. Requires `identity_certfile` and `identity_keyfile` to be configured in `[server]`.
 
+## `[lists]`
+
+Mailing list support. See [Mailing Lists](../how-to/mailing-lists.md) for setup details.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enable` | bool | `false` | Enable mailing list forwarding |
+| `archive` | bool | `true` | Store a copy of forwarded messages in the list mailbox |
+
+When enabled, any mailbox directory containing a `subscribers.txt` file is treated as a mailing list. Incoming messages are forwarded to all subscribers. The server auto-generates an identity certificate for each list to use when forwarding.
+
 ## Full Example
 
 ```toml
@@ -150,6 +165,7 @@ default_allow = false
 
 [verification]
 mode = "optional"
+method = "probe"
 probe_timeout = 5.0
 
 [encryption]
@@ -163,6 +179,10 @@ port = 1960
 [auto_reply]
 enable = true
 interval = 86400
+
+[lists]
+enable = true
+archive = true
 ```
 
 ## Validation
