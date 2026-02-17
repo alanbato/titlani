@@ -20,11 +20,13 @@ Titlani is a complete implementation of the [Misfin(C)](https://misfin.org/) mai
 
 ## Installation
 
+With `uv` (preferred):
+
 ```bash
-uv add titlani
+uv tool install titlani 
 ```
 
-Or with pip:
+Or with `pip`:
 
 ```bash
 pip install titlani

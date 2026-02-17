@@ -4,9 +4,19 @@ version = "0.1.0"
 description = "Misfin(C) mail protocol client and server library"
 readme = "README.md"
 authors = [
-    { name = "Alan Velasco", email = "alanvelasco.a@gmail.com" }
+    { name = "Alan Velasco", email = "dev@alanbato.com" }
 ]
+license = { text = "MIT" }
 requires-python = ">=3.13"
+keywords = ["mail", "misfin", "gemini", "tls", "protocol"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Email",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "cryptography>=46.0.4",
     "platformdirs>=4.0.0",
@@ -20,6 +30,12 @@ dependencies = [
 
 [project.scripts]
 titlani = "titlani.__main__:main"
+
+[project.urls]
+Homepage = "https://titlani.readthedocs.io"
+Repository = "https://github.com/alanbato/titlani"
+Issues = "https://github.com/alanbato/titlani/issues"
+Documentation = "https://titlani.readthedocs.io"
 
 [build-system]
 requires = ["uv_build>=0.9.10,<0.10.0"]
