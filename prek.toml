@@ -1,0 +1,17 @@
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "check-toml" },
+  { id = "check-json" },
+  { id = "end-of-file-fixer" },
+  { id = "check-added-large-files" },
+  { id = "detect-private-key" },
+]
+
+[[repos]]
+repo = "local"
+hooks = [
+  { id = "ruff-check", name = "ruff check", language = "system", entry = "uv run ruff check", types = ["python"] },
+  { id = "ruff-format", name = "ruff format", language = "system", entry = "uv run ruff format --check", types = ["python"] },
+  { id = "ty-check", name = "ty check", language = "system", entry = "uv run ty check src/", pass_filenames = false },
+]
