@@ -49,10 +49,3 @@ GMAP (Gemini Mailbox Access Protocol) components for serving mailbox contents ov
     options:
       show_source: true
       members_order: source
-
-## ProtocolDispatcher
-
-::: titlani.server.dispatcher.ProtocolDispatcher
-    options:
-      show_source: true
-      members_order: source

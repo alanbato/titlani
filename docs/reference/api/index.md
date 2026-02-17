@@ -48,7 +48,7 @@ Auto-generated documentation for Titlani's Python API.
 
     ---
 
-    `GmapHandler`, `GmapMailbox`, `GeminiServerProtocol`, `ProtocolDispatcher` — Remote mailbox access over Gemini.
+    `GmapHandler`, `GmapMailbox`, `GeminiServerProtocol` — Remote mailbox access over Gemini.
 
     [:octicons-arrow-right-24: GMAP API](gmap.md)
 

@@ -88,7 +88,6 @@ Async Misfin server:
 - **`config.py`** — `ServerConfig` — TOML configuration with validation
 - **`handler.py`** — `MessageHandler` (abstract) and `FileMailboxHandler`
 - **`protocol.py`** — `MisfinServerProtocol` — two-phase buffering state machine
-- **`dispatcher.py`** — `ProtocolDispatcher` — multi-protocol multiplexer (available for external use)
 - **`server.py`** — `start_server()` — server lifecycle with auto-cert, middleware, and separate GMAP port
 
 ### GMAP (`gmap/`)
