@@ -25,9 +25,7 @@ class TestServerConfig:
             ServerConfig(server=ServerSection(port=0))
 
     def test_validate_missing_certfile(self, tmp_path):
-        config = ServerConfig(
-            server=ServerSection(certfile=tmp_path / "nonexistent.pem")
-        )
+        config = ServerConfig(server=ServerSection(certfile=tmp_path / "nonexistent.pem"))
         with pytest.raises(ValueError, match="Certificate file not found"):
             config.validate_files()
 

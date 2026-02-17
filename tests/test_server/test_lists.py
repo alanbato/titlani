@@ -25,9 +25,7 @@ class TestIsMailingList:
 
 class TestLoadSubscribers:
     def test_parses_valid_addresses(self, tmp_path):
-        (tmp_path / "subscribers.txt").write_text(
-            "alice@example.com\nbob@other.com\n"
-        )
+        (tmp_path / "subscribers.txt").write_text("alice@example.com\nbob@other.com\n")
         subs = load_subscribers(tmp_path)
         assert subs == ["alice@example.com", "bob@other.com"]
 
@@ -114,9 +112,7 @@ class TestShouldPreventLoop:
 
 class TestGetOrCreateListIdentity:
     def test_generates_new_certs(self, tmp_path):
-        cert, key = get_or_create_list_identity(
-            tmp_path, "announcements", "example.com"
-        )
+        cert, key = get_or_create_list_identity(tmp_path, "announcements", "example.com")
         assert cert.exists()
         assert key.exists()
         assert cert.name == ".list-identity.crt"
@@ -134,9 +130,7 @@ class TestGetOrCreateListIdentity:
         assert cert2.read_bytes() == cert1_bytes
 
     def test_restrictive_permissions(self, tmp_path):
-        cert, key = get_or_create_list_identity(
-            tmp_path, "announcements", "example.com"
-        )
+        cert, key = get_or_create_list_identity(tmp_path, "announcements", "example.com")
         import stat
 
         assert stat.S_IMODE(cert.stat().st_mode) == 0o600

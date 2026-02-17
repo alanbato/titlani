@@ -367,9 +367,7 @@ def display_gemmail_list(
 
         stem = _extract_timestamp_stem(filepath)
         try:
-            dt = datetime.strptime(stem, "%Y%m%dT%H%M%SZ").replace(
-                tzinfo=UTC
-            )
+            dt = datetime.strptime(stem, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
             time_display = dt.strftime("%Y-%m-%d %H:%M")
         except ValueError:
             time_display = stem
@@ -380,11 +378,7 @@ def display_gemmail_list(
             sender = "[dim]encrypted[/]"
             subject = "[yellow][ENC][/]"
         else:
-            sender = (
-                msg.senders[0].long_form
-                if msg.senders
-                else "[dim]anonymous[/]"
-            )
+            sender = msg.senders[0].long_form if msg.senders else "[dim]anonymous[/]"
             subject = msg.subject or "[dim]no subject[/]"
 
         if is_new:

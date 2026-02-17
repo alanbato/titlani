@@ -103,8 +103,7 @@ def mail_search(
     """Search messages by sender, subject, or body text."""
     if not query and not from_filter and not subject_filter and not body_filter:
         error_console.print(
-            "Provide a search query or at least one filter "
-            "(--from, --subject, --body)"
+            "Provide a search query or at least one filter (--from, --subject, --body)"
         )
         raise typer.Exit(code=1)
 
@@ -121,9 +120,7 @@ def mail_search(
             # Encrypted — try decrypting if key provided
             if encryption_key:
                 try:
-                    msg = read_encrypted_message(
-                        filepath, encryption_key, error_console
-                    )
+                    msg = read_encrypted_message(filepath, encryption_key, error_console)
                 except (typer.Exit, Exception):
                     encrypted_skipped += 1
                     continue
@@ -136,9 +133,7 @@ def mail_search(
 
     display_gemmail_list(matches, console)
     if encrypted_skipped:
-        console.print(
-            f"[dim]({encrypted_skipped} encrypted message(s) skipped)[/]"
-        )
+        console.print(f"[dim]({encrypted_skipped} encrypted message(s) skipped)[/]")
 
 
 def _message_matches(
@@ -204,9 +199,7 @@ def mail_read(
 
     try:
         if ".enc" in gemmail_file.suffixes:
-            msg = read_encrypted_message(
-                gemmail_file, encryption_key, error_console
-            )
+            msg = read_encrypted_message(gemmail_file, encryption_key, error_console)
         else:
             msg = GemmailMessage.from_bytes(gemmail_file.read_bytes())
         display_gemmail_message(msg, console)
@@ -217,10 +210,7 @@ def mail_read(
             try:
                 gemmail_file.rename(gemmail_file.parent / read_name)
             except OSError as e:
-                error_console.print(
-                    f"[yellow]Warning: could not mark as read: "
-                    f"{e}[/]"
-                )
+                error_console.print(f"[yellow]Warning: could not mark as read: {e}[/]")
     except ValueError as e:
         error_console.print(f"Invalid gemmail format: {e}")
         raise typer.Exit(code=1) from e
@@ -263,9 +253,7 @@ def mail_delete(
             if cached_messages is None:
                 resolved_mailbox = get_current_mailbox(error_console)
                 resolved_dir = resolve_mailbox_dir(mailbox_dir, error_console)
-                verify_mailbox_access(
-                    resolved_dir / resolved_mailbox, error_console
-                )
+                verify_mailbox_access(resolved_dir / resolved_mailbox, error_console)
                 cached_messages = list_messages(
                     resolved_dir, resolved_mailbox, error_console
                 )
@@ -303,9 +291,7 @@ def mail_delete(
             failed += 1
 
     if failed:
-        error_console.print(
-            f"Deleted {deleted}, failed {failed} message(s)"
-        )
+        error_console.print(f"Deleted {deleted}, failed {failed} message(s)")
         raise typer.Exit(code=1)
     console.print(f"[green]Deleted {deleted} message(s).[/]")
 
@@ -523,9 +509,7 @@ def mail_unblock(
         try:
             blocked_file.unlink()
         except OSError as e:
-            error_console.print(
-                f"Error removing .blocked file: {e}"
-            )
+            error_console.print(f"Error removing .blocked file: {e}")
             raise typer.Exit(code=1) from e
     console.print(f"[green]Unblocked {address}[/]")
 
@@ -579,9 +563,7 @@ def _resolve_message_path(
     if index is not None:
         resolved_mailbox = get_current_mailbox(error_console)
         resolved_dir = resolve_mailbox_dir(mailbox_dir, error_console)
-        verify_mailbox_access(
-            resolved_dir / resolved_mailbox, error_console
-        )
+        verify_mailbox_access(resolved_dir / resolved_mailbox, error_console)
         messages = list_messages(resolved_dir, resolved_mailbox, error_console)
         if index < 1 or index > len(messages):
             error_console.print(

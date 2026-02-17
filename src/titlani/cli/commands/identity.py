@@ -129,8 +129,7 @@ def identity_generate(
 
             server_config = ServerConfig.from_toml(config_path)
             dest_dir = (
-                server_config.server.identity_cert_dir
-                or server_config.server.mailbox_dir
+                server_config.server.identity_cert_dir or server_config.server.mailbox_dir
             )
             dest_dir.mkdir(parents=True, exist_ok=True)
 

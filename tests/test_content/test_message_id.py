@@ -45,33 +45,25 @@ class TestGenerateMessageId:
 class TestParseMessageIdFromFilename:
     def test_new_format_plain(self):
         assert (
-            parse_message_id_from_filename(
-                "20260213T143052Z-a1b2c3d4.gemmail"
-            )
+            parse_message_id_from_filename("20260213T143052Z-a1b2c3d4.gemmail")
             == "20260213T143052Z-a1b2c3d4"
         )
 
     def test_new_format_new(self):
         assert (
-            parse_message_id_from_filename(
-                "20260213T143052Z-a1b2c3d4.gemmail.new"
-            )
+            parse_message_id_from_filename("20260213T143052Z-a1b2c3d4.gemmail.new")
             == "20260213T143052Z-a1b2c3d4"
         )
 
     def test_new_format_enc(self):
         assert (
-            parse_message_id_from_filename(
-                "20260213T143052Z-a1b2c3d4.gemmail.enc"
-            )
+            parse_message_id_from_filename("20260213T143052Z-a1b2c3d4.gemmail.enc")
             == "20260213T143052Z-a1b2c3d4"
         )
 
     def test_new_format_enc_new(self):
         assert (
-            parse_message_id_from_filename(
-                "20260213T143052Z-a1b2c3d4.gemmail.enc.new"
-            )
+            parse_message_id_from_filename("20260213T143052Z-a1b2c3d4.gemmail.enc.new")
             == "20260213T143052Z-a1b2c3d4"
         )
 
@@ -95,9 +87,7 @@ class TestParseMessageIdFromFilename:
 
     def test_old_format_enc_new(self):
         assert (
-            parse_message_id_from_filename(
-                "20260213T143052Z.gemmail.enc.new"
-            )
+            parse_message_id_from_filename("20260213T143052Z.gemmail.enc.new")
             == "20260213T143052Z"
         )
 
@@ -114,9 +104,7 @@ class TestParseMessageIdFromFilename:
 class TestExtractReplyToIds:
     def test_single_reply_link(self):
         body = "# Re: Hello\n\nThanks!\n=> mid:20260213T143052Z-a1b2c3d4 In reply to\n"
-        assert extract_reply_to_ids(body) == [
-            "20260213T143052Z-a1b2c3d4"
-        ]
+        assert extract_reply_to_ids(body) == ["20260213T143052Z-a1b2c3d4"]
 
     def test_multiple_reply_links(self):
         body = (

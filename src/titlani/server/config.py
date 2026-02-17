@@ -76,12 +76,8 @@ class ListsSection(BaseModel):
 class ServerConfig(BaseModel):
     server: ServerSection = Field(default_factory=ServerSection)
     rate_limit: RateLimitSection = Field(default_factory=RateLimitSection)
-    access_control: AccessControlSection = Field(
-        default_factory=AccessControlSection
-    )
-    verification: VerificationSection = Field(
-        default_factory=VerificationSection
-    )
+    access_control: AccessControlSection = Field(default_factory=AccessControlSection)
+    verification: VerificationSection = Field(default_factory=VerificationSection)
     encryption: EncryptionSection = Field(default_factory=EncryptionSection)
     gmap: GmapSection = Field(default_factory=GmapSection)
     auto_reply: AutoReplySection = Field(default_factory=AutoReplySection)
@@ -95,10 +91,6 @@ class ServerConfig(BaseModel):
 
     def validate_files(self) -> None:
         if self.server.certfile and not self.server.certfile.exists():
-            raise ValueError(
-                f"Certificate file not found: {self.server.certfile}"
-            )
+            raise ValueError(f"Certificate file not found: {self.server.certfile}")
         if self.server.keyfile and not self.server.keyfile.exists():
-            raise ValueError(
-                f"Key file not found: {self.server.keyfile}"
-            )
+            raise ValueError(f"Key file not found: {self.server.keyfile}")

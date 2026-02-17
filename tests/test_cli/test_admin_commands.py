@@ -19,9 +19,7 @@ class TestAdminFixperms:
         return mbox
 
     def test_no_subdirectories(self, tmp_path):
-        result = runner.invoke(
-            app, ["admin", "fixperms", "-d", str(tmp_path)]
-        )
+        result = runner.invoke(app, ["admin", "fixperms", "-d", str(tmp_path)])
         assert result.exit_code == 0
         assert "No mailbox subdirectories" in result.output
 
@@ -29,9 +27,7 @@ class TestAdminFixperms:
         self._make_mailbox(tmp_path, "alice", 0o700)
         self._make_mailbox(tmp_path, "bob", 0o700)
 
-        result = runner.invoke(
-            app, ["admin", "fixperms", "-d", str(tmp_path)]
-        )
+        result = runner.invoke(app, ["admin", "fixperms", "-d", str(tmp_path)])
         assert result.exit_code == 0
         assert "All mailbox permissions are correct" in result.output
 
@@ -95,9 +91,7 @@ class TestAdminFixperms:
         # the ownership mismatch will be reported
         real_owner = pwd.getpwuid(mbox.stat().st_uid).pw_name
         if real_owner != "nobody":
-            result = runner.invoke(
-                app, ["admin", "fixperms", "-d", str(tmp_path)]
-            )
+            result = runner.invoke(app, ["admin", "fixperms", "-d", str(tmp_path)])
             assert result.exit_code == 0
             assert f"owned by {real_owner}" in result.output
 

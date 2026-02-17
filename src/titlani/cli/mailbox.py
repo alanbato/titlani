@@ -42,9 +42,7 @@ def get_current_mailbox(error_console: Console) -> str:
     return user
 
 
-def verify_mailbox_access(
-    mailbox_path: Path, error_console: Console
-) -> None:
+def verify_mailbox_access(mailbox_path: Path, error_console: Console) -> None:
     """Verify the current process owns the mailbox directory.
 
     Compares the directory's UID against ``os.getuid()``.  If the
@@ -61,8 +59,7 @@ def verify_mailbox_access(
 
     if dir_uid != os.getuid():
         error_console.print(
-            f"Permission denied: mailbox '{mailbox_path.name}' "
-            "is not owned by you"
+            f"Permission denied: mailbox '{mailbox_path.name}' is not owned by you"
         )
         raise SystemExit(1)
 
@@ -74,9 +71,7 @@ def create_mailbox_subdir(mailbox_dir: Path, mailbox: str) -> Path:
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(path, 0o700)
     except OSError as e:
-        raise OSError(
-            f"Failed to create or secure mailbox '{path}': {e}"
-        ) from e
+        raise OSError(f"Failed to create or secure mailbox '{path}': {e}") from e
     return path
 
 
@@ -116,15 +111,10 @@ def list_messages(
                 messages.append((gemmail_file, None))
             else:
                 try:
-                    msg = GemmailMessage.from_bytes(
-                        gemmail_file.read_bytes()
-                    )
+                    msg = GemmailMessage.from_bytes(gemmail_file.read_bytes())
                     messages.append((gemmail_file, msg))
                 except (ValueError, OSError, UnicodeDecodeError) as e:
-                    error_console.print(
-                        f"[yellow]Skipping {gemmail_file.name}: "
-                        f"{e}[/]"
-                    )
+                    error_console.print(f"[yellow]Skipping {gemmail_file.name}: {e}[/]")
 
     return messages
 

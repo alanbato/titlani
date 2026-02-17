@@ -192,9 +192,7 @@ def init(
             default="probe",
         )
         if verification_method not in ("probe", "spki"):
-            error_console.print(
-                f"Invalid verification method: {verification_method!r}"
-            )
+            error_console.print(f"Invalid verification method: {verification_method!r}")
             raise typer.Exit(code=1)
 
     if auto_reply_enable:

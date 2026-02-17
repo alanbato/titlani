@@ -71,9 +71,7 @@ def admin_fixperms(
             if owner != subdir.name:
                 problems.append(f"owned by {owner}")
 
-            status = (
-                ", ".join(problems) if problems else "[green]OK[/]"
-            )
+            status = ", ".join(problems) if problems else "[green]OK[/]"
             table.add_row(subdir.name, owner, oct(mode), status)
         except OSError as e:
             table.add_row(subdir.name, "?", "?", f"[red]{e}[/]")
@@ -82,15 +80,11 @@ def admin_fixperms(
     console.print(table)
 
     if stat_errors:
-        error_console.print(
-            f"\n{stat_errors} mailbox(es) could not be inspected"
-        )
+        error_console.print(f"\n{stat_errors} mailbox(es) could not be inspected")
 
     if not changes:
         if not stat_errors:
-            console.print(
-                "\n[green]All mailbox permissions are correct[/]"
-            )
+            console.print("\n[green]All mailbox permissions are correct[/]")
         return
 
     console.print(f"\n{len(changes)} mailbox(es) need permission fixes")
@@ -114,8 +108,6 @@ def admin_fixperms(
             failed += 1
 
     if failed:
-        error_console.print(
-            f"Fixed {fixed}, failed {failed} mailbox(es)"
-        )
+        error_console.print(f"Fixed {fixed}, failed {failed} mailbox(es)")
         raise SystemExit(1)
     console.print(f"[green]Fixed {fixed} mailbox(es)[/]")

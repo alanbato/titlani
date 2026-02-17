@@ -295,9 +295,7 @@ class TestMailListThreading:
 
         # Create a reply that references the parent
         reply_body = (
-            "# Re: Hello\n\n"
-            "Thanks!\n"
-            "=> mid:20260213T100000Z-aabbccdd In reply to\n"
+            "# Re: Hello\n\nThanks!\n=> mid:20260213T100000Z-aabbccdd In reply to\n"
         )
         reply_msg = GemmailMessage(
             senders=[MisfinAddress("charlie", "other.com")],
@@ -765,9 +763,7 @@ class TestMailSearch:
 
     def test_search_by_query_matches_subject(self, tmp_path, monkeypatch):
         mailbox_dir = self._setup_mailbox(tmp_path, monkeypatch)
-        result = runner.invoke(
-            app, ["mail", "search", "coffee", "-d", str(mailbox_dir)]
-        )
+        result = runner.invoke(app, ["mail", "search", "coffee", "-d", str(mailbox_dir)])
         assert result.exit_code == 0
         assert "Messages (2)" in result.output
         assert "Coffee plans" in result.output
@@ -784,18 +780,14 @@ class TestMailSearch:
 
     def test_search_by_query_matches_sender(self, tmp_path, monkeypatch):
         mailbox_dir = self._setup_mailbox(tmp_path, monkeypatch)
-        result = runner.invoke(
-            app, ["mail", "search", "carol", "-d", str(mailbox_dir)]
-        )
+        result = runner.invoke(app, ["mail", "search", "carol", "-d", str(mailbox_dir)])
         assert result.exit_code == 0
         assert "Project update" in result.output
         assert "Coffee" not in result.output
 
     def test_search_case_insensitive(self, tmp_path, monkeypatch):
         mailbox_dir = self._setup_mailbox(tmp_path, monkeypatch)
-        result = runner.invoke(
-            app, ["mail", "search", "COFFEE", "-d", str(mailbox_dir)]
-        )
+        result = runner.invoke(app, ["mail", "search", "COFFEE", "-d", str(mailbox_dir)])
         assert result.exit_code == 0
         assert "Coffee plans" in result.output
 
@@ -822,9 +814,12 @@ class TestMailSearch:
         result = runner.invoke(
             app,
             [
-                "mail", "search",
-                "--subject", "project",
-                "-d", str(mailbox_dir),
+                "mail",
+                "search",
+                "--subject",
+                "project",
+                "-d",
+                str(mailbox_dir),
             ],
         )
         assert result.exit_code == 0
@@ -836,9 +831,12 @@ class TestMailSearch:
         result = runner.invoke(
             app,
             [
-                "mail", "search",
-                "--body", "Friday",
-                "-d", str(mailbox_dir),
+                "mail",
+                "search",
+                "--body",
+                "Friday",
+                "-d",
+                str(mailbox_dir),
             ],
         )
         assert result.exit_code == 0
@@ -851,10 +849,14 @@ class TestMailSearch:
         result = runner.invoke(
             app,
             [
-                "mail", "search",
-                "--from", "bob",
-                "--subject", "Re:",
-                "-d", str(mailbox_dir),
+                "mail",
+                "search",
+                "--from",
+                "bob",
+                "--subject",
+                "Re:",
+                "-d",
+                str(mailbox_dir),
             ],
         )
         assert result.exit_code == 0
@@ -867,9 +869,13 @@ class TestMailSearch:
         result = runner.invoke(
             app,
             [
-                "mail", "search", "coffee",
-                "--from", "carol",
-                "-d", str(mailbox_dir),
+                "mail",
+                "search",
+                "coffee",
+                "--from",
+                "carol",
+                "-d",
+                str(mailbox_dir),
             ],
         )
         assert result.exit_code == 0
@@ -880,15 +886,11 @@ class TestMailSearch:
         monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
-        result = runner.invoke(
-            app, ["mail", "search", "-d", str(tmp_path)]
-        )
+        result = runner.invoke(app, ["mail", "search", "-d", str(tmp_path)])
         assert result.exit_code == 1
         assert "Provide a search query" in result.output
 
-    def test_search_encrypted_skipped_without_key(
-        self, tmp_path, monkeypatch
-    ):
+    def test_search_encrypted_skipped_without_key(self, tmp_path, monkeypatch):
         monkeypatch.setenv("USER", "alice")
         mbox = tmp_path / "alice"
         mbox.mkdir()
@@ -900,9 +902,7 @@ class TestMailSearch:
         enc_file = mbox / "20250111T100000Z.gemmail.enc"
         enc_file.write_bytes(b"\x00\x01\x02encrypted")
 
-        result = runner.invoke(
-            app, ["mail", "search", "Visible", "-d", str(tmp_path)]
-        )
+        result = runner.invoke(app, ["mail", "search", "Visible", "-d", str(tmp_path)])
         assert result.exit_code == 0
         assert "Visible" in result.output
         assert "1 encrypted" in result.output
@@ -916,9 +916,7 @@ class TestMailSearch:
             sender="bob@other.com",
             subject="Unread match",
         )
-        result = runner.invoke(
-            app, ["mail", "search", "Unread", "-d", str(tmp_path)]
-        )
+        result = runner.invoke(app, ["mail", "search", "Unread", "-d", str(tmp_path)])
         assert result.exit_code == 0
         assert "Messages (1)" in result.output
         assert "1 new" in result.output
@@ -966,9 +964,7 @@ class TestMailboxOwnershipVerification:
         mode = stat.S_IMODE(path.stat().st_mode)
         assert mode == 0o700
 
-    def test_default_mailbox_auto_created_with_700(
-        self, tmp_path, monkeypatch
-    ):
+    def test_default_mailbox_auto_created_with_700(self, tmp_path, monkeypatch):
         """Default mailbox auto-creation uses secure permissions."""
         import stat
 
@@ -981,4 +977,3 @@ class TestMailboxOwnershipVerification:
         assert mbox.is_dir()
         mode = stat.S_IMODE(mbox.stat().st_mode)
         assert mode == 0o700
-

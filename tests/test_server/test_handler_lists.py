@@ -10,9 +10,7 @@ from titlani.server.handler import FileMailboxHandler
 def _make_valid_message(
     sender: str = "alice@sender.example",
 ) -> bytes:
-    return (
-        f"{sender}\nbob@example.com\n2025-01-01T00:00:00Z\nHello!\n"
-    ).encode()
+    return (f"{sender}\nbob@example.com\n2025-01-01T00:00:00Z\nHello!\n").encode()
 
 
 def _make_request(
@@ -73,9 +71,7 @@ class TestListPostingRestriction:
         assert response.status == StatusCode.UNAUTHORIZED_SENDER
         assert "subscribers" in response.meta.lower()
 
-    async def test_non_subscriber_accepted_when_lists_disabled(
-        self, tmp_path
-    ):
+    async def test_non_subscriber_accepted_when_lists_disabled(self, tmp_path):
         mailbox_dir = _setup_list(tmp_path)
         handler = FileMailboxHandler(
             mailbox_dir=mailbox_dir,
@@ -145,9 +141,7 @@ class TestListForwardingTrigger:
             await handler.handle_message(request)
             assert not mock_forward.called
 
-    async def test_forwarding_not_triggered_for_regular_mailbox(
-        self, tmp_path
-    ):
+    async def test_forwarding_not_triggered_for_regular_mailbox(self, tmp_path):
         mailbox_dir = tmp_path / "mailboxes"
         mailbox_dir.mkdir()
         (mailbox_dir / "alice").mkdir()
@@ -169,9 +163,7 @@ class TestListForwardingTrigger:
 
 
 class TestListForwarding:
-    async def test_forwards_to_all_subscribers_except_sender(
-        self, tmp_path
-    ):
+    async def test_forwards_to_all_subscribers_except_sender(self, tmp_path):
         mailbox_dir = _setup_list(
             tmp_path,
             subscribers=[
@@ -189,9 +181,7 @@ class TestListForwarding:
         mock_response = AsyncMock()
         mock_response.status = 20
 
-        with patch(
-            "titlani.client.session.MisfinClient"
-        ) as mock_client_cls:
+        with patch("titlani.client.session.MisfinClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.send.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -218,10 +208,7 @@ class TestListForwarding:
 
             # alice is the sender, so only bob and carol get forwards
             assert mock_client.send.call_count == 2
-            recipients = {
-                call.kwargs["to"]
-                for call in mock_client.send.call_args_list
-            }
+            recipients = {call.kwargs["to"] for call in mock_client.send.call_args_list}
             assert recipients == {"bob@other.com", "carol@third.com"}
 
     async def test_loop_prevention(self, tmp_path):

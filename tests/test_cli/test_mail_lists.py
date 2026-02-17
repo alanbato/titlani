@@ -63,9 +63,7 @@ class TestMailListSubscribers:
     def test_shows_subscribers(self, tmp_path):
         list_path = tmp_path / "announce"
         list_path.mkdir()
-        (list_path / "subscribers.txt").write_text(
-            "alice@example.com\nbob@other.com\n"
-        )
+        (list_path / "subscribers.txt").write_text("alice@example.com\nbob@other.com\n")
         result = runner.invoke(
             app,
             ["list", "subscribers", "announce", "-d", str(tmp_path)],
@@ -182,9 +180,7 @@ class TestMailListRemove:
     def test_removes_subscriber(self, tmp_path):
         list_path = tmp_path / "announce"
         list_path.mkdir()
-        (list_path / "subscribers.txt").write_text(
-            "alice@example.com\nbob@other.com\n"
-        )
+        (list_path / "subscribers.txt").write_text("alice@example.com\nbob@other.com\n")
         result = runner.invoke(
             app,
             [
