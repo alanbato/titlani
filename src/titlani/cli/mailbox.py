@@ -19,7 +19,7 @@ def resolve_mailbox_dir(explicit: Path | None, error_console: Console) -> Path:
         return explicit
 
     config = ClientConfig.load()
-    if config is not None:
+    if config is not None and config.mailbox_dir is not None:
         if not config.mailbox_dir.is_dir():
             error_console.print(f"Configured mailbox_dir not found: {config.mailbox_dir}")
             raise SystemExit(1)

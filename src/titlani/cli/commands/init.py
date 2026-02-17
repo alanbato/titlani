@@ -105,7 +105,12 @@ def _build_server_toml(
 
 
 def _build_client_toml(server_config_path: Path) -> str:
-    return f'[mail]\nserver_config = "{server_config_path}"\n'
+    return (
+        f'[mail]\nserver_config = "{server_config_path}"\n'
+        "\n# [identity]\n"
+        '# certfile = "path/to/identity.pem"\n'
+        '# keyfile = "path/to/identity.key"\n'
+    )
 
 
 def init(
@@ -241,4 +246,10 @@ def init(
 
     console.print(f"\n[green]Wrote:[/] {server_path}")
     console.print(f"[green]Wrote:[/] {client_path}")
-    console.print("\nStart your server with: [bold]titlani serve[/]")
+    console.print(
+        "\n[bold]Next steps:[/]\n"
+        "  1. Generate an identity:\n"
+        "     [bold]titlani identity generate <mailbox> <hostname>[/]\n"
+        "  2. Start your server:     [bold]titlani serve[/]\n"
+        "  3. Enable completion:     [bold]titlani --install-completion[/]"
+    )

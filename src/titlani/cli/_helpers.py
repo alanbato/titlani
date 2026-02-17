@@ -25,6 +25,29 @@ def validate_cert_key_pair(
         raise typer.Exit(code=1)
 
 
+def resolve_identity(
+    cert: Path | None,
+    key: Path | None,
+    error_console: Console,
+) -> tuple[Path | None, Path | None]:
+    """Resolve identity cert/key: explicit flags -> config file.
+
+    Returns the resolved (cert, key) pair after validation.
+    """
+    if cert or key:
+        validate_cert_key_pair(cert, key, error_console)
+        return cert, key
+
+    from .config import ClientConfig
+
+    config = ClientConfig.load()
+    if config is not None and config.certfile and config.keyfile:
+        cert, key = config.certfile, config.keyfile
+
+    validate_cert_key_pair(cert, key, error_console)
+    return cert, key
+
+
 def build_sender_from_cert(cert: Path) -> MisfinAddress:
     """Extract a MisfinAddress sender from an identity certificate."""
     from tlacacoca import load_certificate

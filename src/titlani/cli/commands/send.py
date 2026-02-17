@@ -5,9 +5,11 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from tlacacoca import CertificateChangedError
 
 from ...cli import format_status_response
-from ...cli._helpers import build_sender_from_cert, validate_cert_key_pair
+from ...cli._helpers import build_sender_from_cert, resolve_identity
+from ...cli.display import format_fingerprint
 from ...client.session import MisfinClient
 from ...protocol.status import is_success
 
@@ -42,7 +44,7 @@ def send(
     ),
 ) -> None:
     """Send a Misfin message."""
-    validate_cert_key_pair(cert, key, error_console)
+    cert, key = resolve_identity(cert, key, error_console)
 
     sender = build_sender_from_cert(cert) if cert else None
 
@@ -69,6 +71,16 @@ def send(
 
         except typer.Exit:
             raise
+        except CertificateChangedError as e:
+            error_console.print(f"Certificate changed for {e.hostname}:{e.port}!")
+            error_console.print(f"  Old: {format_fingerprint(e.old_fingerprint)}")
+            error_console.print(f"  New: {format_fingerprint(e.new_fingerprint)}")
+            error_console.print(
+                "If this is expected, revoke the old certificate:\n"
+                f"    titlani tofu revoke {e.hostname}"
+                f" --port {e.port}"
+            )
+            raise typer.Exit(code=1) from e
         except ConnectionError as e:
             error_console.print(f"Connection error: {e}")
             raise typer.Exit(code=1) from e

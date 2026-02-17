@@ -3,7 +3,6 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from titlani.__main__ import app
@@ -380,11 +379,11 @@ class TestClientConfig:
         assert config is not None
         assert config.mailbox_dir == Path("/tmp/mailboxes")
 
-    def test_missing_mailbox_dir_key_raises(self, tmp_path):
+    def test_missing_mailbox_dir_key_returns_none(self, tmp_path):
         config_file = tmp_path / "config.toml"
         config_file.write_text("[mail]\n")
-        with pytest.raises(ValueError, match="mailbox_dir"):
-            ClientConfig.from_toml(config_file)
+        config = ClientConfig.from_toml(config_file)
+        assert config.mailbox_dir is None
 
     def test_server_config_fallback(self, tmp_path):
         server_toml = tmp_path / "server.toml"
@@ -394,13 +393,13 @@ class TestClientConfig:
         config = ClientConfig.from_toml(config_file)
         assert config.mailbox_dir == Path("/srv/misfin/mail")
 
-    def test_server_config_fallback_missing_key_raises(self, tmp_path):
+    def test_server_config_fallback_missing_key_returns_none(self, tmp_path):
         server_toml = tmp_path / "server.toml"
         server_toml.write_text('[server]\nhost = "localhost"\n')
         config_file = tmp_path / "config.toml"
         config_file.write_text(f'[mail]\nserver_config = "{server_toml}"\n')
-        with pytest.raises(ValueError, match="mailbox_dir"):
-            ClientConfig.from_toml(config_file)
+        config = ClientConfig.from_toml(config_file)
+        assert config.mailbox_dir is None
 
     def test_explicit_mailbox_dir_overrides_server_config(self, tmp_path):
         server_toml = tmp_path / "server.toml"

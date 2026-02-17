@@ -109,5 +109,5 @@ def admin_fixperms(
 
     if failed:
         error_console.print(f"Fixed {fixed}, failed {failed} mailbox(es)")
-        raise SystemExit(1)
+        raise typer.Exit(code=1)
     console.print(f"[green]Fixed {fixed} mailbox(es)[/]")

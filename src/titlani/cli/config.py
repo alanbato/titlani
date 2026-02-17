@@ -8,7 +8,9 @@ from pydantic import BaseModel
 
 
 class ClientConfig(BaseModel):
-    mailbox_dir: Path
+    mailbox_dir: Path | None = None
+    certfile: Path | None = None
+    keyfile: Path | None = None
 
     @classmethod
     def from_toml(cls, path: Path) -> "ClientConfig":
@@ -24,12 +26,16 @@ class ClientConfig(BaseModel):
             if server_config:
                 mailbox_dir = cls._read_server_mailbox_dir(Path(server_config))
 
-        if mailbox_dir is None:
-            raise ValueError(
-                "Missing required key: [mail] mailbox_dir "
-                "(or server_config pointing to server TOML)"
-            )
-        return cls(mailbox_dir=Path(mailbox_dir))
+        # Read identity section
+        identity = data.get("identity", {})
+        certfile = identity.get("certfile")
+        keyfile = identity.get("keyfile")
+
+        return cls(
+            mailbox_dir=Path(mailbox_dir) if mailbox_dir else None,
+            certfile=Path(certfile) if certfile else None,
+            keyfile=Path(keyfile) if keyfile else None,
+        )
 
     @staticmethod
     def _read_server_mailbox_dir(path: Path) -> str | None:

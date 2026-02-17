@@ -8,6 +8,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from tlacacoca import CertificateChangedError
 
 from ...cli import (
     confirm_action,
@@ -18,8 +19,9 @@ from ...cli import (
 from ...cli._helpers import (
     build_sender_from_cert,
     read_encrypted_message,
-    validate_cert_key_pair,
+    resolve_identity,
 )
+from ...cli.display import format_fingerprint
 from ...cli.mailbox import (
     get_current_mailbox,
     is_new_message,
@@ -324,13 +326,9 @@ def mail_delete(
 
 @mail_app.command("reply")
 def mail_reply(
-    gemmail_file: Path = typer.Argument(
+    message: str = typer.Argument(
         ...,
-        help="Path to .gemmail or .gemmail.enc file to reply to",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        resolve_path=True,
+        help="Message index (from 'mail list') or path to .gemmail file",
     ),
     reply_message: str | None = typer.Option(
         None,
@@ -372,12 +370,24 @@ def mail_reply(
         dir_okay=False,
         resolve_path=True,
     ),
+    mailbox_dir: Path | None = typer.Option(
+        None,
+        "--mailbox-dir",
+        "-d",
+        help="Mailbox directory",
+    ),
+    mailbox_name: str | None = typer.Option(
+        None,
+        "--mailbox",
+        help="Mailbox name (defaults to $USER)",
+    ),
     timeout: float = typer.Option(
         30.0, "--timeout", "-t", help="Request timeout in seconds"
     ),
 ) -> None:
     """Reply to a gemmail message."""
-    validate_cert_key_pair(cert, key, error_console)
+    gemmail_file = _resolve_message_path(message, mailbox_dir, mailbox_name=mailbox_name)
+    cert, key = resolve_identity(cert, key, error_console)
 
     # Read original message
     try:
@@ -468,6 +478,16 @@ def mail_reply(
 
         except typer.Exit:
             raise
+        except CertificateChangedError as e:
+            error_console.print(f"Certificate changed for {e.hostname}:{e.port}!")
+            error_console.print(f"  Old: {format_fingerprint(e.old_fingerprint)}")
+            error_console.print(f"  New: {format_fingerprint(e.new_fingerprint)}")
+            error_console.print(
+                "If this is expected, revoke the old certificate:\n"
+                f"    titlani tofu revoke {e.hostname}"
+                f" --port {e.port}"
+            )
+            raise typer.Exit(code=1) from e
         except ConnectionError as e:
             error_console.print(f"Connection error: {e}")
             raise typer.Exit(code=1) from e

@@ -145,6 +145,11 @@ def identity_generate(
             )
             console.print(f"[green]Mailbox dir:[/] {mailbox_subdir}")
 
+            # Update client config with default identity
+            client_config_path = user_config_path("titlani") / "config.toml"
+            _update_client_identity(client_config_path, cert_file, key_file)
+            console.print(f"[green]Default identity:[/] Updated {client_config_path}")
+
             console.print(
                 f"\n[dim]Share with user:[/]\n"
                 f"  Certificate: {cert_file}\n"
@@ -185,3 +190,31 @@ def identity_info(
     except Exception as e:
         error_console.print(f"Error reading certificate: {e}")
         raise typer.Exit(code=1) from e
+
+
+def _update_client_identity(config_path: Path, cert_file: Path, key_file: Path) -> None:
+    """Write or update the [identity] section in client config.toml."""
+    import re
+
+    identity_block = f'[identity]\ncertfile = "{cert_file}"\nkeyfile = "{key_file}"\n'
+
+    if not config_path.exists():
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(identity_block)
+        return
+
+    content = config_path.read_text()
+
+    # Replace existing [identity] section (up to next section or EOF)
+    pattern = r"\[identity\]\n(?:(?!\[)[^\n]*\n)*"
+    if re.search(pattern, content):
+        content = re.sub(pattern, identity_block, content)
+    else:
+        # Also replace commented-out [identity] section
+        commented = r"# \[identity\]\n(?:# [^\n]*\n)*"
+        if re.search(commented, content):
+            content = re.sub(commented, identity_block, content)
+        else:
+            content = content.rstrip("\n") + "\n\n" + identity_block
+
+    config_path.write_text(content)
