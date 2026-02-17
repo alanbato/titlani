@@ -1,11 +1,15 @@
 """Shared test fixtures."""
 
+import datetime
 import socket
 import ssl
 from pathlib import Path
 
 import pytest
 from cryptography import x509
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
 
 from titlani.identity.certificate import generate_identity_cert
 
@@ -49,6 +53,31 @@ def test_cert(test_identity_cert: tuple[Path, Path]) -> x509.Certificate:
     """Load the test certificate."""
     cert_path, _ = test_identity_cert
     return x509.load_pem_x509_certificate(cert_path.read_bytes())
+
+
+def build_cn_only_cert(cn: str, san_dns: str | None = None) -> x509.Certificate:
+    """Build a minimal self-signed cert with the given CN (and optional SAN).
+
+    Useful for simulating Gemini-style certs that put user@host in CN
+    instead of using Misfin USER_ID / SAN DNS fields.
+    """
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
+    builder = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(subject)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.datetime.now(datetime.UTC))
+        .not_valid_after(datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1))
+    )
+    if san_dns:
+        builder = builder.add_extension(
+            x509.SubjectAlternativeName([x509.DNSName(san_dns)]),
+            critical=False,
+        )
+    return builder.sign(key, hashes.SHA256())
 
 
 @pytest.fixture

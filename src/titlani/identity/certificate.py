@@ -144,6 +144,13 @@ def extract_identity(cert: x509.Certificate) -> MisfinIdentity:
     except x509.ExtensionNotFound:
         pass
 
+    # Fallback for Gemini-style certs: CN=user@hostname with no USER_ID
+    if not mailbox and blurb and "@" in blurb:
+        mailbox, _, cn_host = blurb.partition("@")
+        if not hostname:
+            hostname = cn_host
+        blurb = ""
+
     return MisfinIdentity(mailbox=mailbox, hostname=hostname, blurb=blurb)
 
 

@@ -11,6 +11,8 @@ from titlani.identity.certificate import (
     normalize_fingerprint,
 )
 
+from ..conftest import build_cn_only_cert
+
 
 class TestMisfinIdentity:
     def test_address(self):
@@ -105,6 +107,34 @@ class TestExtractIdentity:
         assert identity.mailbox == "testuser"
         assert identity.hostname == "test.example.com"
         assert identity.blurb == "Test User"
+
+    def test_extract_from_gemini_style_cert(self):
+        """Gemini-style cert with CN=user@hostname, no USER_ID or SAN."""
+        cert = build_cn_only_cert("alice@gem.example.com")
+        identity = extract_identity(cert)
+        assert identity.mailbox == "alice"
+        assert identity.hostname == "gem.example.com"
+        assert identity.blurb == ""
+
+    def test_extract_gemini_cert_with_san_prefers_san_hostname(self):
+        """Gemini cert with CN=user@host and SAN DNS; SAN wins for hostname."""
+        cert = build_cn_only_cert("bob@cn.example.com", san_dns="san.example.com")
+        identity = extract_identity(cert)
+        assert identity.mailbox == "bob"
+        assert identity.hostname == "san.example.com"
+
+    def test_no_fallback_when_user_id_present(self):
+        """Misfin-style cert: CN with @ should NOT trigger fallback."""
+        cert_pem, _ = generate_identity_cert(
+            mailbox="carol",
+            hostname="misfin.example.com",
+            blurb="carol@elsewhere.com",
+        )
+        cert = x509.load_pem_x509_certificate(cert_pem)
+        identity = extract_identity(cert)
+        assert identity.mailbox == "carol"
+        assert identity.hostname == "misfin.example.com"
+        assert identity.blurb == "carol@elsewhere.com"
 
 
 class TestNormalizeFingerprint:

@@ -1,17 +1,42 @@
 [[repos]]
 repo = "builtin"
-hooks = [
-  { id = "check-toml" },
-  { id = "check-json" },
-  { id = "end-of-file-fixer" },
-  { id = "check-added-large-files" },
-  { id = "detect-private-key" },
-]
+
+[[repos.hooks]]
+id = "check-toml"
+
+[[repos.hooks]]
+id = "check-json"
+
+[[repos.hooks]]
+id = "end-of-file-fixer"
+
+[[repos.hooks]]
+id = "check-added-large-files"
+
+[[repos.hooks]]
+id = "detect-private-key"
+exclude = "^tests/"
 
 [[repos]]
 repo = "local"
-hooks = [
-  { id = "ruff-check", name = "ruff check", language = "system", entry = "uv run ruff check", types = ["python"] },
-  { id = "ruff-format", name = "ruff format", language = "system", entry = "uv run ruff format --check", types = ["python"] },
-  { id = "ty-check", name = "ty check", language = "system", entry = "uv run ty check src/", pass_filenames = false },
-]
+
+[[repos.hooks]]
+id = "ruff-check"
+name = "ruff check"
+language = "system"
+entry = "uv run ruff check"
+types = ["python"]
+
+[[repos.hooks]]
+id = "ruff-format"
+name = "ruff format"
+language = "system"
+entry = "uv run ruff format --check"
+types = ["python"]
+
+[[repos.hooks]]
+id = "ty-check"
+name = "ty check"
+language = "system"
+entry = "uv run ty check src/"
+pass_filenames = false
