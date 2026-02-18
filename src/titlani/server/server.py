@@ -11,8 +11,9 @@ from tlacacoca import (
     MiddlewareChain,
     RateLimitConfig,
     RateLimiter,
+    TLSServerProtocol,
     configure_logging,
-    create_server_context,
+    create_permissive_server_context,
     generate_self_signed_cert,
     get_certificate_fingerprint,
     get_logger,
@@ -293,24 +294,10 @@ async def _start_gmap_server(
     if not config.gmap.enable or not _gmap_available:
         return None
 
-    client_ca_certs = [str(p) for p in cert_dir.glob("*.pem") if p.is_file()]
-
-    if not client_ca_certs:
-        logger.warning(
-            "gmap_no_client_certs",
-            cert_dir=str(cert_dir),
-            message=(
-                "GMAP enabled but no per-mailbox .pem files found. "
-                "Use 'titlani identity generate --install' to set up "
-                "user certificates."
-            ),
-        )
-
-    gmap_ssl_context = create_server_context(
+    gmap_ssl_context = create_permissive_server_context(
         certfile=str(certfile),
         keyfile=str(keyfile),
         request_client_cert=True,
-        client_ca_certs=client_ca_certs or None,
     )
 
     gmap_handler = GmapHandler(
@@ -321,18 +308,19 @@ async def _start_gmap_server(
 
     loop = asyncio.get_running_loop()
     server = await loop.create_server(
-        lambda: GeminiServerProtocol(
-            request_handler=gmap_handler.handle_request,
+        lambda: TLSServerProtocol(
+            lambda: GeminiServerProtocol(
+                request_handler=gmap_handler.handle_request,
+            ),
+            gmap_ssl_context,
         ),
         host=config.server.host,
         port=config.gmap.port,
-        ssl=gmap_ssl_context,
     )
 
     logger.info(
         "gmap_enabled",
         port=config.gmap.port,
-        client_certs=len(client_ca_certs),
     )
     return server
 
@@ -347,15 +335,13 @@ async def start_server(
 
     certfile, keyfile, identity_certfile, identity_keyfile = _ensure_certificates(config)
 
-    # Create TLS context
-    # NOTE: request_client_cert=False because OpenSSL 3.x with CERT_OPTIONAL
-    # rejects self-signed client certs (no CA to verify against), causing
-    # silent TLS handshake failures. Sender identity is carried in the
-    # gemmail message metadata instead.
-    ssl_context = create_server_context(
+    # Create TLS context using PyOpenSSL-based permissive context that
+    # accepts any client cert (including self-signed) without CA validation.
+    # Client identity is verified at the application layer via TOFU.
+    ssl_context = create_permissive_server_context(
         certfile=str(certfile),
         keyfile=str(keyfile),
-        request_client_cert=False,
+        request_client_cert=True,
     )
 
     middleware = _build_middleware(config)
@@ -395,16 +381,18 @@ async def start_server(
         config, base_handler, identity_certfile, identity_keyfile
     )
 
-    # Start Misfin server
+    # Start Misfin server — TLS handled by TLSServerProtocol (no ssl= param)
     loop = asyncio.get_running_loop()
     misfin_server = await loop.create_server(
-        lambda: MisfinServerProtocol(
-            message_handler=handler.handle_message,
-            middleware=middleware,
+        lambda: TLSServerProtocol(
+            lambda: MisfinServerProtocol(
+                message_handler=handler.handle_message,
+                middleware=middleware,
+            ),
+            ssl_context,
         ),
         host=config.server.host,
         port=config.server.port,
-        ssl=ssl_context,
     )
 
     logger.info(

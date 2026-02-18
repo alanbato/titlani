@@ -5,7 +5,11 @@ import ssl
 from pathlib import Path
 
 import pytest
-from tlacacoca import create_server_context, generate_self_signed_cert
+from tlacacoca import (
+    TLSServerProtocol,
+    create_permissive_server_context,
+    generate_self_signed_cert,
+)
 
 from titlani.client.protocol import MisfinClientProtocol
 from titlani.content.gemmail import GemmailMessage, MisfinAddress
@@ -114,9 +118,10 @@ async def test_client_server_e2e(
     """Test full client -> server message delivery."""
     server_cert, server_key = server_certs
 
-    ssl_context = create_server_context(
+    ssl_context = create_permissive_server_context(
         certfile=str(server_cert),
         keyfile=str(server_key),
+        request_client_cert=True,
     )
 
     handler = FileMailboxHandler(
@@ -126,12 +131,14 @@ async def test_client_server_e2e(
 
     loop = asyncio.get_running_loop()
     server = await loop.create_server(
-        lambda: MisfinServerProtocol(
-            message_handler=handler.handle_message,
+        lambda: TLSServerProtocol(
+            lambda: MisfinServerProtocol(
+                message_handler=handler.handle_message,
+            ),
+            ssl_context,
         ),
         host="127.0.0.1",
         port=unused_tcp_port,
-        ssl=ssl_context,
     )
 
     try:
@@ -178,9 +185,10 @@ async def test_server_rejects_unknown_mailbox(
     """Test that server returns 51 for unknown mailbox."""
     server_cert, server_key = server_certs
 
-    ssl_context = create_server_context(
+    ssl_context = create_permissive_server_context(
         certfile=str(server_cert),
         keyfile=str(server_key),
+        request_client_cert=True,
     )
 
     handler = FileMailboxHandler(
@@ -190,12 +198,14 @@ async def test_server_rejects_unknown_mailbox(
 
     loop = asyncio.get_running_loop()
     server = await loop.create_server(
-        lambda: MisfinServerProtocol(
-            message_handler=handler.handle_message,
+        lambda: TLSServerProtocol(
+            lambda: MisfinServerProtocol(
+                message_handler=handler.handle_message,
+            ),
+            ssl_context,
         ),
         host="127.0.0.1",
         port=unused_tcp_port,
-        ssl=ssl_context,
     )
 
     try:
@@ -226,9 +236,10 @@ async def test_server_rejects_wrong_domain(
     """Test that server returns 53 for wrong domain."""
     server_cert, server_key = server_certs
 
-    ssl_context = create_server_context(
+    ssl_context = create_permissive_server_context(
         certfile=str(server_cert),
         keyfile=str(server_key),
+        request_client_cert=True,
     )
 
     handler = FileMailboxHandler(
@@ -238,12 +249,14 @@ async def test_server_rejects_wrong_domain(
 
     loop = asyncio.get_running_loop()
     server = await loop.create_server(
-        lambda: MisfinServerProtocol(
-            message_handler=handler.handle_message,
+        lambda: TLSServerProtocol(
+            lambda: MisfinServerProtocol(
+                message_handler=handler.handle_message,
+            ),
+            ssl_context,
         ),
         host="127.0.0.1",
         port=unused_tcp_port,
-        ssl=ssl_context,
     )
 
     try:

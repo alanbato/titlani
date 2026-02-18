@@ -24,7 +24,7 @@ dependencies = [
     "rich>=14.3.2",
     "ruff>=0.15.0",
     "structlog>=25.5.0",
-    "tlacacoca>=0.1.4",
+    "tlacacoca>=0.2.0",
     "typer>=0.21.1",
 ]
 
