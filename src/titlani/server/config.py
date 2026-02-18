@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from ..protocol.constants import DEFAULT_GMAP_PORT, DEFAULT_PORT
 
 VerificationModeStr = Literal["off", "optional", "required"]
-VerificationMethodStr = Literal["probe", "spki"]
+VerificationMethodStr = Literal["probe", "spki", "probe+spki"]
 SPKIOnChangeStr = Literal["reject", "accept"]
 
 

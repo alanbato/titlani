@@ -24,6 +24,7 @@ from ..identity.certificate import (
     normalize_fingerprint,
 )
 from ..verification import (
+    CombinedVerifier,
     ProbeVerifier,
     SenderVerificationCache,
     SPKIVerifier,
@@ -235,13 +236,29 @@ def _setup_verification(
 
     method = VerificationMethod(config.verification.method)
 
+    verifier: ProbeVerifier | SPKIVerifier | CombinedVerifier
     if method == VerificationMethod.SPKI:
-        verifier: ProbeVerifier | SPKIVerifier = SPKIVerifier(
+        verifier = SPKIVerifier(
             cache=cache,
             port=config.server.port,
             timeout=config.verification.probe_timeout,
             on_spki_change=config.verification.spki_on_change,
         )
+    elif method == VerificationMethod.PROBE_SPKI:
+        probe = ProbeVerifier(
+            cache=cache,
+            identity_cert=identity_certfile,
+            identity_key=identity_keyfile,
+            port=config.server.port,
+            timeout=config.verification.probe_timeout,
+        )
+        spki = SPKIVerifier(
+            cache=cache,
+            port=config.server.port,
+            timeout=config.verification.probe_timeout,
+            on_spki_change=config.verification.spki_on_change,
+        )
+        verifier = CombinedVerifier(probe_verifier=probe, spki_verifier=spki)
     else:
         verifier = ProbeVerifier(
             cache=cache,
@@ -255,6 +272,7 @@ def _setup_verification(
         wrapped=handler,
         verifier=verifier,
         mode=VerificationMode(config.verification.mode),
+        method=method,
     )
     logger.info(
         "sender_verification_enabled",

@@ -222,7 +222,7 @@ def mail_read(
             msg = read_encrypted_message(gemmail_file, encryption_key, error_console)
         else:
             msg = GemmailMessage.from_bytes(gemmail_file.read_bytes())
-        display_gemmail_message(msg, console)
+        display_gemmail_message(msg, console, filepath=gemmail_file)
 
         # Mark as read by removing .new suffix
         if is_new_message(gemmail_file):

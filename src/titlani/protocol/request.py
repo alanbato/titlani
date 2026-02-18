@@ -6,7 +6,7 @@ Request format: misfin://<MAILBOX>@<HOSTNAME><TAB><CONTENT-LENGTH><CR><LF><MESSA
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from cryptography import x509
 
@@ -31,6 +31,7 @@ class MisfinRequest:
     client_cert: x509.Certificate | None = field(default=None, repr=False)
     client_cert_fingerprint: str | None = None
     protocol_version: str = "C"
+    verification_result: Any = field(default=None, repr=False)
 
     @classmethod
     def from_header(cls, header_line: bytes) -> MisfinRequest:

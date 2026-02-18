@@ -1,5 +1,6 @@
 """Rich display helpers for Titlani CLI commands."""
 
+import json
 import sys
 from datetime import UTC, datetime
 from importlib.metadata import version as get_version
@@ -293,7 +294,74 @@ def display_spki_list(
     console.print(table)
 
 
-def display_gemmail_message(msg: GemmailMessage, console: Console) -> None:
+def _load_verification_data(filepath: Path) -> dict[str, Any] | None:
+    """Load verification metadata for a message from the mailbox index.
+
+    Looks up the message ID in ``<mailbox>/.meta.json`` first, then
+    falls back to ``<mailbox>/.gmap.json`` for backwards compatibility.
+    Returns the ``"verification"`` dict for the message, or None.
+    """
+    from ..content.message_id import parse_message_id_from_filename
+
+    msgid = parse_message_id_from_filename(filepath.name)
+    if msgid is None:
+        return None
+
+    mailbox_dir = filepath.parent
+
+    # Primary: .meta.json
+    for index_name in (".meta.json", ".gmap.json"):
+        index_path = mailbox_dir / index_name
+        if not index_path.exists():
+            continue
+        try:
+            data = json.loads(index_path.read_text())
+            entry = data.get("messages", {}).get(msgid)
+            if entry is not None:
+                verification = entry.get("verification")
+                if verification is not None:
+                    return verification
+        except (json.JSONDecodeError, OSError):
+            continue
+
+    return None
+
+
+def _format_verification_line(verification: dict[str, Any]) -> str:
+    """Format verification data into a display line."""
+    checks = verification.get("checks", {})
+    if not checks:
+        status = "passed" if verification.get("verified") else "failed"
+        color = "green" if verification.get("verified") else "red"
+        return f"[{color}]{status}[/]"
+
+    parts = []
+    for method, info in checks.items():
+        verified = info.get("verified", False)
+        reason = info.get("reason")
+        if verified:
+            parts.append(f"[green]{method} passed[/]")
+        elif reason:
+            parts.append(f"[red]{method} failed[/] ({reason})")
+        else:
+            parts.append(f"[red]{method} failed[/]")
+    return ", ".join(parts)
+
+
+def _verification_indicator(verification: dict[str, Any] | None) -> str:
+    """Return a small indicator for the message list column."""
+    if verification is None:
+        return "[dim]-[/]"
+    if verification.get("verified"):
+        return "[green]✓[/]"
+    return "[yellow]![/]"
+
+
+def display_gemmail_message(
+    msg: GemmailMessage,
+    console: Console,
+    filepath: Path | None = None,
+) -> None:
     """Display a single gemmail message with metadata and body."""
     lines: list[str] = []
 
@@ -307,6 +375,13 @@ def display_gemmail_message(msg: GemmailMessage, console: Console) -> None:
         latest = max(msg.timestamps)
         ts = latest.strftime("%Y-%m-%d %H:%M:%S UTC")
         lines.append(f"[bold cyan]Date:[/]  {ts} ({format_relative_time(latest)})")
+
+    # Show verification status if sidecar exists
+    if filepath is not None:
+        verification = _load_verification_data(filepath)
+        if verification is not None:
+            ver_line = _format_verification_line(verification)
+            lines.append(f"[bold cyan]Verify:[/] {ver_line}")
 
     lines.append("")
     lines.append(msg.body.rstrip("\n"))
@@ -358,8 +433,9 @@ def display_gemmail_list(
 
     table = Table(title=title)
     table.add_column("#", style="bold", justify="right", width=4)
+    table.add_column("V", justify="center", width=1, no_wrap=True)
     table.add_column("Received", style="dim", width=18)
-    table.add_column("From", style="cyan", width=30)
+    table.add_column("From", style="cyan", width=26)
     table.add_column("Subject")
 
     for idx, (filepath, msg) in enumerate(messages, start=1):
@@ -389,7 +465,10 @@ def display_gemmail_list(
             n = reply_counts[msgid]
             subject += f" [dim](↳{n})[/]"
 
-        table.add_row(str(idx), time_display, sender, subject)
+        verification = _load_verification_data(filepath)
+        v_indicator = _verification_indicator(verification)
+
+        table.add_row(str(idx), v_indicator, time_display, sender, subject)
 
     console.print(table)
 

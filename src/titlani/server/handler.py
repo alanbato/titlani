@@ -2,6 +2,7 @@
 
 import abc
 import asyncio
+import json
 import os
 import re
 from collections.abc import Callable
@@ -133,7 +134,7 @@ class FileMailboxHandler(MessageHandler):
         is_list = self._is_active_list(mailbox_path)
         should_store = not is_list or self.lists_archive
         if should_store:
-            self._store_message(mailbox, mailbox_path, message_bytes)
+            self._store_message(mailbox, mailbox_path, message_bytes, request)
         self._maybe_trigger_auto_reply(mailbox, mailbox_path, message_bytes)
         self._maybe_trigger_list_forwarding(mailbox, mailbox_path, message_bytes)
 
@@ -319,7 +320,13 @@ class FileMailboxHandler(MessageHandler):
 
         return msg.to_bytes()
 
-    def _store_message(self, mailbox: str, mailbox_path: Path, data: bytes) -> None:
+    def _store_message(
+        self,
+        mailbox: str,
+        mailbox_path: Path,
+        data: bytes,
+        request: MisfinRequest | None = None,
+    ) -> None:
         from ..content.message_id import generate_message_id
 
         timestamp = datetime.now(UTC)
@@ -346,12 +353,63 @@ class FileMailboxHandler(MessageHandler):
             filepath.write_bytes(data)
             is_encrypted = False
         os.chmod(filepath, 0o600)
+
+        # Write per-message metadata if present
+        if request is not None and request.verification_result is not None:
+            self._write_message_meta(mailbox_path, stem, request.verification_result)
+
         logger.info(
             "message_delivered",
             mailbox=mailbox,
             file=filename,
             encrypted=is_encrypted,
         )
+
+    @staticmethod
+    def _write_message_meta(
+        mailbox_path: Path,
+        stem: str,
+        result: object,
+    ) -> None:
+        """Upsert verification data into the mailbox ``.meta.json`` index."""
+        from ..verification.verifier import VerificationResult
+
+        if not isinstance(result, VerificationResult):
+            return
+
+        def _serialize(r: VerificationResult) -> dict:
+            d: dict = {"verified": r.verified}
+            if r.cached:
+                d["cached"] = True
+            if r.reason is not None:
+                d["reason"] = r.reason
+            return d
+
+        checks_dict = {}
+        if result.checks:
+            for method_name, sub_result in result.checks.items():
+                checks_dict[method_name] = _serialize(sub_result)
+
+        meta_path = mailbox_path / ".meta.json"
+
+        # Load existing index
+        if meta_path.exists():
+            try:
+                index = json.loads(meta_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                index = {"messages": {}}
+        else:
+            index = {"messages": {}}
+
+        index.setdefault("messages", {})[stem] = {
+            "verification": {
+                "verified": result.verified,
+                "checks": checks_dict,
+            }
+        }
+
+        meta_path.write_text(json.dumps(index, indent=2) + "\n")
+        os.chmod(meta_path, 0o600)
 
     def _should_auto_reply(self, mailbox_path: Path, message: GemmailMessage) -> bool:
         """Check if an auto-reply should be sent for this message.

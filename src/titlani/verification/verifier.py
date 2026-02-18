@@ -26,6 +26,7 @@ class VerificationMode(StrEnum):
 class VerificationMethod(StrEnum):
     PROBE = "probe"
     SPKI = "spki"
+    PROBE_SPKI = "probe+spki"
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,7 @@ class VerificationResult:
     fingerprint: str | None = None
     cached: bool = False
     reason: str | None = None
+    checks: dict[str, "VerificationResult"] | None = None
 
 
 class ProbeVerifier:

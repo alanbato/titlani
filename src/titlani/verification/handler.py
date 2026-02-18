@@ -6,8 +6,14 @@ from ..protocol.request import MisfinRequest
 from ..protocol.response import MisfinResponse
 from ..protocol.status import StatusCode
 from ..server.handler import MessageHandler
+from .combined_verifier import CombinedVerifier
 from .spki_verifier import SPKIVerifier
-from .verifier import ProbeVerifier, VerificationMode
+from .verifier import (
+    ProbeVerifier,
+    VerificationMethod,
+    VerificationMode,
+    VerificationResult,
+)
 
 logger = get_logger(__name__)
 
@@ -22,12 +28,32 @@ class VerifyingHandler(MessageHandler):
     def __init__(
         self,
         wrapped: MessageHandler,
-        verifier: ProbeVerifier | SPKIVerifier,
+        verifier: ProbeVerifier | SPKIVerifier | CombinedVerifier,
         mode: VerificationMode = VerificationMode.OPTIONAL,
+        method: VerificationMethod = VerificationMethod.PROBE,
     ) -> None:
         self.wrapped = wrapped
         self.verifier = verifier
         self.mode = mode
+        self.method = method
+
+    def _wrap_result(self, result: VerificationResult) -> VerificationResult:
+        """Ensure result has a checks dict for sidecar metadata.
+
+        CombinedVerifier already provides checks natively.
+        For single-method verifiers, wrap the result in a one-entry dict.
+        """
+        if result.checks is not None:
+            return result
+
+        method_key = self.method.value
+        return VerificationResult(
+            verified=result.verified,
+            fingerprint=result.fingerprint,
+            cached=result.cached,
+            reason=result.reason,
+            checks={method_key: result},
+        )
 
     async def handle_message(self, request: MisfinRequest) -> MisfinResponse:
         if self.mode == VerificationMode.OFF:
@@ -54,6 +80,10 @@ class VerifyingHandler(MessageHandler):
 
         sender = message.senders[0]
         result = await self.verifier.verify_sender(sender)
+        wrapped_result = self._wrap_result(result)
+
+        # Attach verification metadata to the request for sidecar storage
+        request.verification_result = wrapped_result
 
         if not result.verified:
             if self.mode == VerificationMode.REQUIRED:
