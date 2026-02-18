@@ -237,8 +237,7 @@ class FileMailboxHandler(MessageHandler):
         cert_sender = self._extract_sender(request)
         if cert_sender:
             senders.append(cert_sender)
-        # For Misfin(C), also parse senders from gemmail metadata
-        if request.protocol_version == "C" and request.raw_message:
+        if request.raw_message:
             try:
                 msg = request.parse_message()
                 senders.extend(msg.senders)
@@ -292,21 +291,25 @@ class FileMailboxHandler(MessageHandler):
         sender = self._extract_sender(request)
 
         if request.protocol_version == "B":
-            body_text = request.raw_message.decode("utf-8")
-            if not body_text.endswith("\n"):
-                body_text += "\n"
-            recipient = MisfinAddress(
-                mailbox=request.mailbox,
-                hostname=request.hostname,
-            )
-            senders = [sender] if sender else []
-            envelope = GemmailMessage(
-                senders=senders,
-                recipients=[recipient],
-                timestamps=[now],
-                body=body_text,
-            )
-            return envelope.to_bytes()
+            try:
+                msg = request.parse_message()
+            except ValueError:
+                body_text = request.raw_message.decode("utf-8", errors="replace")
+                if not body_text.endswith("\n"):
+                    body_text += "\n"
+                msg = GemmailMessage(body=body_text)
+
+            msg.timestamps.insert(0, now)
+            if sender:
+                msg.senders.insert(0, sender)
+            if not msg.recipients:
+                msg.recipients.append(
+                    MisfinAddress(
+                        mailbox=request.mailbox,
+                        hostname=request.hostname,
+                    )
+                )
+            return msg.to_bytes()
 
         try:
             msg = request.parse_message()

@@ -152,4 +152,6 @@ class MisfinRequest:
     def parse_message(self) -> GemmailMessage:
         from ..content.gemmail import GemmailMessage
 
+        if self.protocol_version == "B":
+            return GemmailMessage.from_bytes_b(self.raw_message)
         return GemmailMessage.from_bytes(self.raw_message)

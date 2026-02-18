@@ -99,6 +99,36 @@ class GemmailMessage:
             body=body,
         )
 
+    @classmethod
+    def from_bytes_b(cls, data: bytes) -> "GemmailMessage":
+        """Parse a Misfin(B) gemtext message body.
+
+        B-format embeds metadata as special-prefix lines anywhere in
+        the body: ``< sender``, ``: recipients``, ``@ timestamp``.
+        All ``< `` lines are collected as senders (forwarding chains);
+        only the first ``: `` and ``@ `` are used. Parsed metadata
+        lines are stripped from the returned body.
+        """
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise ValueError(f"Message is not valid UTF-8: {e}") from e
+
+        for i, ch in enumerate(text):
+            if ch == "\r" and (i + 1 >= len(text) or text[i + 1] != "\n"):
+                raise ValueError("CR must only appear immediately before LF")
+
+        text = text.replace("\r\n", "\n")
+        lines = text.split("\n")
+
+        senders, recipients, timestamps, body = _parse_b_metadata(lines)
+        return cls(
+            senders=senders,
+            recipients=recipients,
+            timestamps=timestamps,
+            body=body,
+        )
+
     def to_bytes(self) -> bytes:
         sender_line = ", ".join(str(s) for s in self.senders)
         recipient_line = ", ".join(str(r) for r in self.recipients)
@@ -149,3 +179,58 @@ def _parse_timestamp_line(line: str) -> list[datetime]:
         except ValueError as e:
             raise ValueError(f"Invalid timestamp: {item!r}") from e
     return timestamps
+
+
+# --- Misfin(B) gemmail parsing ---
+
+
+def _parse_b_metadata(
+    lines: list[str],
+) -> tuple[list[MisfinAddress], list[MisfinAddress], list[datetime], str]:
+    """Scan B-format gemtext lines for metadata prefixes.
+
+    Returns (senders, recipients, timestamps, body) where body has
+    metadata lines stripped. Only the first `: ` and `@ ` lines are
+    used; all `< ` sender lines are collected (spec allows multiple
+    for forwarding chains).
+    """
+    senders: list[MisfinAddress] = []
+    recipients: list[MisfinAddress] = []
+    timestamps: list[datetime] = []
+    body_lines: list[str] = []
+
+    recipients_found = False
+    timestamp_found = False
+
+    for line in lines:
+        if line.startswith("< "):
+            try:
+                senders.append(MisfinAddress.parse(line[2:]))
+            except ValueError:
+                body_lines.append(line)
+            continue
+
+        if not recipients_found and line.startswith(": "):
+            recipients_found = True
+            # B-format recipients are space-separated bare addresses
+            # (no blurbs); blurbs only appear on < sender lines.
+            for token in line[2:].split():
+                try:
+                    recipients.append(MisfinAddress.parse(token))
+                except ValueError:
+                    pass
+            continue
+
+        if not timestamp_found and line.startswith("@ "):
+            timestamp_found = True
+            ts_str = line[2:].strip()
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                timestamps.append(ts.astimezone(UTC))
+            except ValueError:
+                body_lines.append(line)
+            continue
+
+        body_lines.append(line)
+
+    return senders, recipients, timestamps, "\n".join(body_lines)
