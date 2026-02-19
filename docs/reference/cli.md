@@ -530,7 +530,7 @@ titlani list create dev-announce
 
 ## `list subscribers`
 
-Show subscribers for a mailing list.
+Show subscribers for a mailing list. Displays confirmed and pending subscribers with status tags.
 
 ```bash
 titlani list subscribers <listname> [OPTIONS]
@@ -548,11 +548,20 @@ titlani list subscribers <listname> [OPTIONS]
 |--------|-------|---------|-------------|
 | `--mailbox-dir` | `-d` | — | Mailbox directory |
 
+**Example output:**
+
+```
+dev-announce subscribers (3):
+  alice@example.com [confirmed]
+  bob@remote.host [confirmed]
+  carol@another.host [pending]
+```
+
 ---
 
 ## `list add`
 
-Add a subscriber to a mailing list.
+Add a subscriber to a mailing list. By default, sends a verification token that must be confirmed before the subscription is active.
 
 ```bash
 titlani list add <listname> <address> [OPTIONS]
@@ -570,18 +579,24 @@ titlani list add <listname> <address> [OPTIONS]
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--mailbox-dir` | `-d` | — | Mailbox directory |
+| `--hostname` | `-H` | — | Server hostname for sending confirmation (reads from server config if not provided) |
+| `--no-verify` | — | `false` | Skip verification and add directly |
 
-**Example:**
+**Examples:**
 
 ```bash
-titlani list add dev-announce alice@example.com
+# Add with verification (sends confirmation token)
+titlani list add dev-announce alice@example.com -H mail.example.com
+
+# Add directly without verification
+titlani list add dev-announce alice@example.com --no-verify
 ```
 
 ---
 
 ## `list remove`
 
-Remove a subscriber from a mailing list.
+Remove a subscriber from a mailing list. Also removes any pending verification entry.
 
 ```bash
 titlani list remove <listname> <address> [OPTIONS]

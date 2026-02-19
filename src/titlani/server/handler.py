@@ -19,12 +19,15 @@ from ..protocol.request import MisfinRequest
 from ..protocol.response import MisfinResponse
 from ..protocol.status import StatusCode
 from .lists import (
+    add_subscriber,
     get_or_create_list_identity,
     is_mailing_list,
     is_subscriber,
     load_subscribers,
+    remove_subscriber,
     should_prevent_loop,
 )
+from .subscription import SubscriptionTokenStore
 
 logger = get_logger(__name__)
 
@@ -51,6 +54,7 @@ class FileMailboxHandler(MessageHandler):
         port: int = DEFAULT_PORT,
         lists_enabled: bool = False,
         lists_archive: bool = True,
+        subscription_store: SubscriptionTokenStore | None = None,
     ) -> None:
         self.mailbox_dir = mailbox_dir
         self.hostname = hostname
@@ -64,6 +68,7 @@ class FileMailboxHandler(MessageHandler):
         self.port = port
         self.lists_enabled = lists_enabled
         self.lists_archive = lists_archive
+        self.subscription_store = subscription_store
         self._auto_reply_last_sent: dict[str, datetime] = {}
 
     async def handle_message(self, request: MisfinRequest) -> MisfinResponse:
@@ -123,6 +128,13 @@ class FileMailboxHandler(MessageHandler):
                 status=StatusCode.BAD_REQUEST,
                 meta="Invalid message format",
             )
+
+        # Mailing list subscription commands (before posting restriction)
+        list_cmd_response = self._handle_list_command(
+            mailbox, mailbox_path, senders, message_bytes
+        )
+        if list_cmd_response is not None:
+            return list_cmd_response
 
         # Mailing list posting restriction: reject non-subscribers and loops
         list_rejection = self._check_list_posting(
@@ -507,6 +519,213 @@ class FileMailboxHandler(MessageHandler):
                 "auto_reply_error",
                 mailbox=mailbox,
                 recipient=sender_addr,
+                error=str(e),
+            )
+
+    # -- Mailing list subscription commands --
+
+    _SUBSCRIBE_RE = re.compile(r"^\s*subscribe\s*$", re.IGNORECASE)
+    _CONFIRM_RE = re.compile(r"^\s*confirm\s+([A-Fa-f0-9]{6})\s*$", re.IGNORECASE)
+    _UNSUBSCRIBE_RE = re.compile(r"^\s*unsubscribe\s*$", re.IGNORECASE)
+
+    def _handle_list_command(
+        self,
+        mailbox: str,
+        mailbox_path: Path,
+        senders: list[MisfinAddress],
+        message_bytes: bytes,
+    ) -> MisfinResponse | None:
+        """Intercept subscribe/unsubscribe/confirm commands for lists.
+
+        Returns a response for command messages, or None to let the
+        normal message flow continue.
+        """
+        if not self._is_active_list(mailbox_path):
+            return None
+        if self.subscription_store is None:
+            return None
+
+        try:
+            parsed = GemmailMessage.from_bytes(message_bytes)
+        except ValueError:
+            return None
+
+        body = parsed.body.strip()
+        # Strip leading gemtext heading marker
+        if body.startswith("# "):
+            body = body[2:].strip()
+
+        m = self._SUBSCRIBE_RE.match(body)
+        if m:
+            return self._handle_subscribe(mailbox, mailbox_path, senders)
+
+        m = self._CONFIRM_RE.match(body)
+        if m:
+            return self._handle_confirm(mailbox, mailbox_path, senders, m.group(1))
+
+        m = self._UNSUBSCRIBE_RE.match(body)
+        if m:
+            return self._handle_unsubscribe(mailbox, mailbox_path, senders)
+
+        return None
+
+    def _handle_subscribe(
+        self,
+        mailbox: str,
+        mailbox_path: Path,
+        senders: list[MisfinAddress],
+    ) -> MisfinResponse:
+        if not senders:
+            return MisfinResponse(
+                status=StatusCode.BAD_REQUEST,
+                meta="No sender identity",
+            )
+        sender_addr = senders[0].address.lower()
+        subscribers = load_subscribers(mailbox_path)
+        if is_subscriber(sender_addr, subscribers):
+            return MisfinResponse(
+                status=StatusCode.SUCCESS,
+                meta="Already subscribed",
+            )
+
+        assert self.subscription_store is not None
+        token = self.subscription_store.create_token(mailbox, sender_addr)
+        asyncio.ensure_future(
+            self._send_confirmation_message(mailbox, mailbox_path, sender_addr, token)
+        )
+        logger.info(
+            "subscription_pending",
+            mailbox=mailbox,
+            address=sender_addr,
+        )
+        return MisfinResponse(
+            status=StatusCode.SUCCESS,
+            meta="Confirmation sent",
+        )
+
+    def _handle_confirm(
+        self,
+        mailbox: str,
+        mailbox_path: Path,
+        senders: list[MisfinAddress],
+        token: str,
+    ) -> MisfinResponse:
+        assert self.subscription_store is not None
+        address = self.subscription_store.verify_token(mailbox, token)
+        if address is None:
+            return MisfinResponse(
+                status=StatusCode.BAD_REQUEST,
+                meta="Invalid or expired token",
+            )
+
+        # Verify the confirmed address matches one of the senders
+        sender_addrs = {s.address.lower() for s in senders}
+        if address.lower() not in sender_addrs:
+            return MisfinResponse(
+                status=StatusCode.BAD_REQUEST,
+                meta="Token does not match sender",
+            )
+
+        add_subscriber(mailbox_path, address)
+        logger.info(
+            "subscription_confirmed",
+            mailbox=mailbox,
+            address=address,
+        )
+        return MisfinResponse(
+            status=StatusCode.SUCCESS,
+            meta="Subscription confirmed",
+        )
+
+    def _handle_unsubscribe(
+        self,
+        mailbox: str,
+        mailbox_path: Path,
+        senders: list[MisfinAddress],
+    ) -> MisfinResponse:
+        if not senders:
+            return MisfinResponse(
+                status=StatusCode.BAD_REQUEST,
+                meta="No sender identity",
+            )
+        sender_addr = senders[0].address.lower()
+        subscribers = load_subscribers(mailbox_path)
+        if not is_subscriber(sender_addr, subscribers):
+            return MisfinResponse(
+                status=StatusCode.BAD_REQUEST,
+                meta="Not subscribed",
+            )
+
+        remove_subscriber(mailbox_path, sender_addr)
+        logger.info(
+            "subscription_removed",
+            mailbox=mailbox,
+            address=sender_addr,
+        )
+        return MisfinResponse(
+            status=StatusCode.SUCCESS,
+            meta="Unsubscribed",
+        )
+
+    async def _send_confirmation_message(
+        self,
+        mailbox: str,
+        mailbox_path: Path,
+        recipient_addr: str,
+        token: str,
+    ) -> None:
+        """Send a confirmation token to the subscriber."""
+        try:
+            cert_path, key_path = get_or_create_list_identity(
+                mailbox_path, mailbox, self.hostname
+            )
+        except Exception as e:
+            logger.error(
+                "confirmation_identity_failed",
+                mailbox=mailbox,
+                error=str(e),
+            )
+            return
+
+        body = (
+            f"# Confirm subscription to {mailbox}\n"
+            f"\n"
+            f"Reply with the following to confirm:\n"
+            f"confirm {token}\n"
+        )
+
+        from ..client.session import MisfinClient
+
+        try:
+            async with MisfinClient(
+                timeout=10.0,
+                port=self.port,
+                client_cert=cert_path,
+                client_key=key_path,
+            ) as client:
+                response = await client.send(
+                    to=recipient_addr,
+                    body=body,
+                )
+
+            if 20 <= response.status < 30:
+                logger.info(
+                    "confirmation_sent",
+                    mailbox=mailbox,
+                    recipient=recipient_addr,
+                )
+            else:
+                logger.warning(
+                    "confirmation_send_failed",
+                    mailbox=mailbox,
+                    recipient=recipient_addr,
+                    status=response.status,
+                )
+        except Exception as e:
+            logger.warning(
+                "confirmation_send_error",
+                mailbox=mailbox,
+                recipient=recipient_addr,
                 error=str(e),
             )
 

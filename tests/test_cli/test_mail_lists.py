@@ -1,8 +1,12 @@
 """Tests for mailing list CLI commands."""
 
+from unittest.mock import AsyncMock, patch
+
 from typer.testing import CliRunner
 
 from titlani.__main__ import app
+from titlani.server.lists import SUBSCRIPTION_DB_FILE
+from titlani.server.subscription import SubscriptionTokenStore
 
 runner = CliRunner()
 
@@ -71,7 +75,24 @@ class TestMailListSubscribers:
         assert result.exit_code == 0
         assert "alice@example.com" in result.output
         assert "bob@other.com" in result.output
-        assert "2" in result.output
+        assert "confirmed" in result.output.lower()
+
+    def test_shows_pending_status(self, tmp_path):
+        list_path = tmp_path / "announce"
+        list_path.mkdir()
+        (list_path / "subscribers.txt").write_text("alice@example.com\n")
+        db_path = tmp_path / SUBSCRIPTION_DB_FILE
+        with SubscriptionTokenStore(db_path) as store:
+            store.create_token("announce", "bob@other.com")
+
+        result = runner.invoke(
+            app,
+            ["list", "subscribers", "announce", "-d", str(tmp_path)],
+        )
+        assert result.exit_code == 0
+        assert "confirmed" in result.output.lower()
+        assert "pending" in result.output.lower()
+        assert "2" in result.output  # total count
 
     def test_empty_list(self, tmp_path):
         list_path = tmp_path / "announce"
@@ -103,7 +124,7 @@ class TestMailListSubscribers:
 
 
 class TestMailListAdd:
-    def test_adds_subscriber(self, tmp_path):
+    def test_adds_subscriber_no_verify(self, tmp_path):
         list_path = tmp_path / "announce"
         list_path.mkdir()
         (list_path / "subscribers.txt").write_text("# subscribers\n")
@@ -116,12 +137,46 @@ class TestMailListAdd:
                 "alice@example.com",
                 "-d",
                 str(tmp_path),
+                "--no-verify",
             ],
         )
         assert result.exit_code == 0
         assert "Added" in result.output
         content = (list_path / "subscribers.txt").read_text()
         assert "alice@example.com" in content
+
+    def test_add_with_verification(self, tmp_path):
+        list_path = tmp_path / "announce"
+        list_path.mkdir()
+        (list_path / "subscribers.txt").write_text("# subscribers\n")
+
+        with patch(
+            "titlani.cli.commands.list._send_verification",
+            new_callable=AsyncMock,
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "list",
+                    "add",
+                    "announce",
+                    "alice@example.com",
+                    "-d",
+                    str(tmp_path),
+                    "-H",
+                    "example.com",
+                ],
+            )
+        assert result.exit_code == 0
+        assert "pending" in result.output.lower()
+        # Should NOT be in subscribers.txt yet
+        content = (list_path / "subscribers.txt").read_text()
+        assert "alice@example.com" not in content
+        # Should be in pending DB
+        db_path = tmp_path / SUBSCRIPTION_DB_FILE
+        assert db_path.exists()
+        with SubscriptionTokenStore(db_path) as store:
+            assert store.is_pending("announce", "alice@example.com")
 
     def test_rejects_duplicate(self, tmp_path):
         list_path = tmp_path / "announce"
@@ -237,3 +292,27 @@ class TestMailListRemove:
         )
         assert result.exit_code == 0
         assert "not subscribed" in result.output
+
+    def test_remove_cleans_up_pending(self, tmp_path):
+        list_path = tmp_path / "announce"
+        list_path.mkdir()
+        (list_path / "subscribers.txt").write_text("alice@example.com\n")
+        db_path = tmp_path / SUBSCRIPTION_DB_FILE
+        with SubscriptionTokenStore(db_path) as store:
+            store.create_token("announce", "alice@example.com")
+
+        result = runner.invoke(
+            app,
+            [
+                "list",
+                "remove",
+                "announce",
+                "alice@example.com",
+                "-d",
+                str(tmp_path),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Removed" in result.output
+        with SubscriptionTokenStore(db_path) as store:
+            assert not store.is_pending("announce", "alice@example.com")

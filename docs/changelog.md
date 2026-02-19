@@ -12,6 +12,8 @@
     - Separate TLS context with client certificate authentication using Misfin identity certs
     - Enable with `[gmap] enable = true` in server config
 - Added mailing list support — server forwards messages to all subscribers when a mailbox contains `subscribers.txt`. CLI commands: `list create`, `list subscribers`, `list add`, `list remove`. Enable with `[lists]` in server config
+- Added self-service mailing list subscription — users can send `subscribe`, `confirm <TOKEN>`, or `unsubscribe` as the message body to a list address. Command messages are intercepted before the subscriber-only posting check and are never stored or forwarded
+- Added address verification for mailing list subscriptions — `list add` now sends a confirmation token by default (use `--no-verify` to skip). Pending tokens are stored in a SQLite database (`subscription_pending.db`) with 24-hour expiry. `list subscribers` shows `[confirmed]` vs `[pending]` status. `list remove` also cleans up pending entries
 - Added SPKI-based sender verification as an alternative to probe-based verification. Uses a TOFU model for server TLS certificate public key hashes. Configure with `method = "spki"` in `[verification]`
 - Added `verification spki list` and `verification spki clear` CLI commands for managing the server SPKI cache
 - Added `mail search` command with per-field filters (`--from`, `--subject`, `--body`) and encrypted message support

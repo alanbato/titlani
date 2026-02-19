@@ -1,5 +1,6 @@
 """Mailing list management commands."""
 
+import asyncio
 import re
 from pathlib import Path
 
@@ -9,9 +10,13 @@ from rich.console import Console
 from ...cli.mailbox import resolve_mailbox_dir
 from ...server.lists import (
     SUBSCRIBERS_FILE,
+    SUBSCRIPTION_DB_FILE,
+    add_subscriber,
     is_mailing_list,
     load_subscribers,
+    remove_subscriber,
 )
+from ...server.subscription import SubscriptionTokenStore
 
 console = Console()
 error_console = Console(stderr=True, style="bold red")
@@ -76,15 +81,28 @@ def list_subscribers(
         error_console.print(f"Not a mailing list: {listname}")
         raise typer.Exit(code=1)
 
-    subscribers = load_subscribers(list_path)
+    confirmed = load_subscribers(list_path)
 
-    if not subscribers:
+    # Load pending subscriptions
+    resolved_dir = list_path.parent
+    db_path = resolved_dir / SUBSCRIPTION_DB_FILE
+    pending_addrs: set[str] = set()
+    if db_path.exists():
+        with SubscriptionTokenStore(db_path) as store:
+            for addr, _token, _ts in store.list_pending(listname):
+                pending_addrs.add(addr)
+
+    if not confirmed and not pending_addrs:
         console.print(f"[yellow]No subscribers in {listname}[/]")
         return
 
-    console.print(f"[bold cyan]{listname}[/] subscribers ({len(subscribers)}):")
-    for addr in sorted(subscribers):
-        console.print(f"  {addr}")
+    total = len(confirmed) + len(pending_addrs)
+    console.print(f"[bold cyan]{listname}[/] subscribers ({total}):")
+    for addr in sorted(confirmed):
+        console.print(f"  {addr} [green]\\[confirmed][/]")
+    for addr in sorted(pending_addrs):
+        if addr not in set(confirmed):
+            console.print(f"  {addr} [yellow]\\[pending][/]")
 
 
 @list_app.command("add")
@@ -93,6 +111,12 @@ def list_add(
     address: str = typer.Argument(..., help="Subscriber address (mailbox@hostname)"),
     mailbox_dir: Path | None = typer.Option(
         None, "--mailbox-dir", "-d", help="Mailbox directory"
+    ),
+    hostname: str | None = typer.Option(
+        None, "--hostname", "-H", help="Server hostname for sending"
+    ),
+    no_verify: bool = typer.Option(
+        False, "--no-verify", help="Skip verification, add directly"
     ),
 ) -> None:
     """Add a subscriber to a mailing list."""
@@ -112,14 +136,37 @@ def list_add(
         console.print(f"[yellow]{address} is already subscribed to {listname}[/]")
         return
 
+    if no_verify:
+        added = add_subscriber(list_path, address)
+        if added:
+            console.print(f"[green]Added {address} to {listname}[/]")
+        else:
+            console.print(f"[yellow]{address} is already subscribed to {listname}[/]")
+        return
+
+    # Verification flow: create pending token and send confirmation
+    resolved_dir = list_path.parent
+    db_path = resolved_dir / SUBSCRIPTION_DB_FILE
+    with SubscriptionTokenStore(db_path) as store:
+        token = store.create_token(listname, address)
+
+    if hostname is None:
+        hostname = _resolve_hostname()
+
+    if hostname is None:
+        error_console.print(
+            "Cannot determine hostname. "
+            "Use --hostname or configure server.hostname in config."
+        )
+        raise typer.Exit(code=1)
+
     try:
-        subscribers_file = list_path / SUBSCRIBERS_FILE
-        with subscribers_file.open("a") as f:
-            f.write(f"{address}\n")
-        console.print(f"[green]Added {address} to {listname}[/]")
-    except OSError as e:
-        error_console.print(f"Error updating subscribers: {e}")
-        raise typer.Exit(code=1) from e
+        asyncio.run(_send_verification(listname, list_path, hostname, address, token))
+        console.print(f"[green]Verification sent to {address} (pending)[/]")
+    except Exception as e:
+        console.print(
+            f"[yellow]Token created but could not send: {e}[/]\n[dim]Token: {token}[/]"
+        )
 
 
 @list_app.command("remove")
@@ -138,20 +185,19 @@ def list_remove(
         error_console.print(f"Not a mailing list: {listname}")
         raise typer.Exit(code=1)
 
-    existing = set(load_subscribers(list_path))
-    if address not in existing:
-        console.print(f"[yellow]{address} is not subscribed to {listname}[/]")
-        return
+    removed = remove_subscriber(list_path, address)
 
-    subscribers_file = list_path / SUBSCRIBERS_FILE
-    try:
-        lines = subscribers_file.read_text().splitlines()
-        new_lines = [line for line in lines if line.strip().lower() != address]
-        subscribers_file.write_text("\n".join(new_lines) + "\n")
+    # Also clean up any pending entry
+    resolved_dir = list_path.parent
+    db_path = resolved_dir / SUBSCRIPTION_DB_FILE
+    if db_path.exists():
+        with SubscriptionTokenStore(db_path) as store:
+            store.remove_pending(listname, address)
+
+    if removed:
         console.print(f"[green]Removed {address} from {listname}[/]")
-    except OSError as e:
-        error_console.print(f"Error updating subscribers: {e}")
-        raise typer.Exit(code=1) from e
+    else:
+        console.print(f"[yellow]{address} is not subscribed to {listname}[/]")
 
 
 def _resolve_list_path(listname: str, mailbox_dir: Path | None) -> Path:
@@ -162,3 +208,43 @@ def _resolve_list_path(listname: str, mailbox_dir: Path | None) -> Path:
         error_console.print(f"List not found: {listname}")
         raise typer.Exit(code=1)
     return list_path
+
+
+def _resolve_hostname() -> str | None:
+    """Try to read hostname from server config."""
+    try:
+        from platformdirs import user_config_path
+
+        from ...server.config import ServerConfig
+
+        config_path = user_config_path("titlani") / "server.toml"
+        config = ServerConfig.from_toml(config_path)
+        return config.server.hostname
+    except Exception:
+        return None
+
+
+async def _send_verification(
+    listname: str,
+    list_path: Path,
+    hostname: str,
+    address: str,
+    token: str,
+) -> None:
+    """Send a verification token message to the address."""
+    from ...client.session import MisfinClient
+    from ...server.lists import get_or_create_list_identity
+
+    cert_path, key_path = get_or_create_list_identity(list_path, listname, hostname)
+    body = (
+        f"# Confirm subscription to {listname}\n"
+        f"\n"
+        f"Reply with the following to confirm:\n"
+        f"confirm {token}\n"
+    )
+    async with MisfinClient(
+        timeout=10.0,
+        client_cert=cert_path,
+        client_key=key_path,
+    ) as client:
+        await client.send(to=address, body=body)

@@ -36,6 +36,7 @@ from ..verification import (
 from .config import ServerConfig
 from .handler import FileMailboxHandler
 from .protocol import MisfinServerProtocol
+from .subscription import SubscriptionTokenStore
 
 _gmap_available = True
 try:
@@ -361,6 +362,15 @@ async def start_server(
     cert_dir = config.server.identity_cert_dir or config.server.mailbox_dir
     recipient_fps = _load_recipient_fingerprints(cert_dir, id_fingerprint)
 
+    # Create subscription token store for mailing lists
+    subscription_store: SubscriptionTokenStore | None = None
+    if config.lists.enable:
+        from .lists import SUBSCRIPTION_DB_FILE
+
+        subscription_store = SubscriptionTokenStore(
+            config.server.mailbox_dir / SUBSCRIPTION_DB_FILE
+        )
+
     # Create base handler
     base_handler = FileMailboxHandler(
         mailbox_dir=config.server.mailbox_dir,
@@ -375,6 +385,7 @@ async def start_server(
         port=config.server.port,
         lists_enabled=config.lists.enable,
         lists_archive=config.lists.archive,
+        subscription_store=subscription_store,
     )
 
     handler, cache = _setup_verification(
@@ -426,4 +437,6 @@ async def start_server(
     finally:
         if cache is not None:
             cache.close()
+        if subscription_store is not None:
+            subscription_store.close()
         logger.info("server_stopped")

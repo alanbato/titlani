@@ -12,6 +12,7 @@ from ..identity.certificate import generate_identity_cert
 logger = get_logger(__name__)
 
 SUBSCRIBERS_FILE = "subscribers.txt"
+SUBSCRIPTION_DB_FILE = "subscription_pending.db"
 _LIST_CERT_FILE = ".list-identity.crt"
 _LIST_KEY_FILE = ".list-identity.key"
 
@@ -56,6 +57,31 @@ def load_subscribers(mailbox_path: Path) -> list[str]:
                 file=str(subscribers_file),
             )
     return addresses
+
+
+def add_subscriber(mailbox_path: Path, address: str) -> bool:
+    """Append *address* to subscribers.txt. Returns False if already present."""
+    address = address.strip().lower()
+    existing = set(load_subscribers(mailbox_path))
+    if address in existing:
+        return False
+    subscribers_file = mailbox_path / SUBSCRIBERS_FILE
+    with subscribers_file.open("a") as f:
+        f.write(f"{address}\n")
+    return True
+
+
+def remove_subscriber(mailbox_path: Path, address: str) -> bool:
+    """Remove *address* from subscribers.txt. Returns False if not found."""
+    address = address.strip().lower()
+    existing = set(load_subscribers(mailbox_path))
+    if address not in existing:
+        return False
+    subscribers_file = mailbox_path / SUBSCRIBERS_FILE
+    lines = subscribers_file.read_text().splitlines()
+    new_lines = [line for line in lines if line.strip().lower() != address]
+    subscribers_file.write_text("\n".join(new_lines) + "\n")
+    return True
 
 
 def is_subscriber(sender_addr: str, subscribers: list[str]) -> bool:

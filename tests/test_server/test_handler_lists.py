@@ -1,10 +1,13 @@
 """Tests for mailing list integration in FileMailboxHandler."""
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 from titlani.protocol.request import MisfinRequest
 from titlani.protocol.status import StatusCode
 from titlani.server.handler import FileMailboxHandler
+from titlani.server.lists import load_subscribers
+from titlani.server.subscription import SubscriptionTokenStore
 
 
 def _make_valid_message(
@@ -272,3 +275,287 @@ class TestListArchiving:
         # Message should NOT be stored
         files = list((mailbox_dir / "announce").glob("*.gemmail*"))
         assert len(files) == 0
+
+
+def _make_command_message(
+    sender: str,
+    recipient: str,
+    command: str,
+) -> bytes:
+    """Build a gemmail message whose body is a subscription command.
+
+    The recipient in gemmail metadata is the sender's own address (not
+    the list address) to avoid triggering loop detection. The actual
+    list routing is determined by the request URL, not gemmail metadata.
+    """
+    return (f"{sender}\n{sender}\n2025-01-01T00:00:00Z\n{command}\n").encode()
+
+
+class TestSubscriptionCommands:
+    def _make_handler(self, mailbox_dir, store):
+        return FileMailboxHandler(
+            mailbox_dir=mailbox_dir,
+            hostname="example.com",
+            lists_enabled=True,
+            subscription_store=store,
+        )
+
+    async def test_subscribe_creates_pending(self, tmp_path):
+        mailbox_dir = _setup_list(tmp_path, subscribers=[])
+        store = SubscriptionTokenStore()
+        handler = self._make_handler(mailbox_dir, store)
+
+        msg = _make_command_message(
+            "alice@sender.example",
+            "announce@example.com",
+            "subscribe",
+        )
+        request = _make_request("announce", message=msg)
+
+        with patch.object(
+            handler,
+            "_send_confirmation_message",
+            new_callable=AsyncMock,
+        ):
+            response = await handler.handle_message(request)
+            await asyncio.sleep(0)
+
+        assert response.status == StatusCode.SUCCESS
+        assert "Confirmation sent" in response.meta
+        assert store.is_pending("announce", "alice@sender.example")
+        store.close()
+
+    async def test_subscribe_already_subscribed(self, tmp_path):
+        mailbox_dir = _setup_list(tmp_path, subscribers=["alice@sender.example"])
+        store = SubscriptionTokenStore()
+        handler = self._make_handler(mailbox_dir, store)
+
+        msg = _make_command_message(
+            "alice@sender.example",
+            "announce@example.com",
+            "subscribe",
+        )
+        request = _make_request("announce", message=msg)
+        response = await handler.handle_message(request)
+
+        assert response.status == StatusCode.SUCCESS
+        assert "Already subscribed" in response.meta
+        store.close()
+
+    async def test_confirm_valid_token(self, tmp_path):
+        mailbox_dir = _setup_list(tmp_path, subscribers=[])
+        store = SubscriptionTokenStore()
+        token = store.create_token("announce", "alice@sender.example")
+        handler = self._make_handler(mailbox_dir, store)
+
+        msg = _make_command_message(
+            "alice@sender.example",
+            "announce@example.com",
+            f"confirm {token}",
+        )
+        request = _make_request("announce", message=msg)
+        response = await handler.handle_message(request)
+
+        assert response.status == StatusCode.SUCCESS
+        assert "confirmed" in response.meta.lower()
+        subscribers = load_subscribers(mailbox_dir / "announce")
+        assert "alice@sender.example" in subscribers
+        store.close()
+
+    async def test_confirm_invalid_token(self, tmp_path):
+        mailbox_dir = _setup_list(tmp_path, subscribers=[])
+        store = SubscriptionTokenStore()
+        handler = self._make_handler(mailbox_dir, store)
+
+        msg = _make_command_message(
+            "alice@sender.example",
+            "announce@example.com",
+            "confirm AAAAAA",
+        )
+        request = _make_request("announce", message=msg)
+        response = await handler.handle_message(request)
+
+        assert response.status == StatusCode.BAD_REQUEST
+        assert "Invalid or expired" in response.meta
+        store.close()
+
+    async def test_confirm_wrong_sender(self, tmp_path):
+        mailbox_dir = _setup_list(tmp_path, subscribers=[])
+        store = SubscriptionTokenStore()
+        token = store.create_token("announce", "alice@sender.example")
+        handler = self._make_handler(mailbox_dir, store)
+
+        # Eve tries to confirm Alice's token
+        msg = _make_command_message(
+            "eve@evil.com",
+            "announce@example.com",
+            f"confirm {token}",
+        )
+        request = _make_request("announce", message=msg)
+        response = await handler.handle_message(request)
+
+        assert response.status == StatusCode.BAD_REQUEST
+        assert "does not match" in response.meta
+        store.close()
+
+    async def test_unsubscribe(self, tmp_path):
+        mailbox_dir = _setup_list(
+            tmp_path, subscribers=["alice@sender.example", "bob@other.com"]
+        )
+        store = SubscriptionTokenStore()
+        handler = self._make_handler(mailbox_dir, store)
+
+        msg = _make_command_message(
+            "alice@sender.example",
+            "announce@example.com",
+            "unsubscribe",
+        )
+        request = _make_request("announce", message=msg)
+        response = await handler.handle_message(request)
+
+        assert response.status == StatusCode.SUCCESS
+        assert "Unsubscribed" in response.meta
+        subscribers = load_subscribers(mailbox_dir / "announce")
+        assert "alice@sender.example" not in subscribers
+        assert "bob@other.com" in subscribers
+        store.close()
+
+    async def test_unsubscribe_not_subscribed(self, tmp_path):
+        mailbox_dir = _setup_list(tmp_path, subscribers=[])
+        store = SubscriptionTokenStore()
+        handler = self._make_handler(mailbox_dir, store)
+
+        msg = _make_command_message(
+            "alice@sender.example",
+            "announce@example.com",
+            "unsubscribe",
+        )
+        request = _make_request("announce", message=msg)
+        response = await handler.handle_message(request)
+
+        assert response.status == StatusCode.BAD_REQUEST
+        assert "Not subscribed" in response.meta
+        store.close()
+
+    async def test_command_not_stored(self, tmp_path):
+        mailbox_dir = _setup_list(tmp_path, subscribers=[])
+        store = SubscriptionTokenStore()
+        handler = self._make_handler(mailbox_dir, store)
+
+        msg = _make_command_message(
+            "alice@sender.example",
+            "announce@example.com",
+            "subscribe",
+        )
+        request = _make_request("announce", message=msg)
+
+        with patch.object(
+            handler,
+            "_send_confirmation_message",
+            new_callable=AsyncMock,
+        ):
+            await handler.handle_message(request)
+            await asyncio.sleep(0)
+
+        files = list((mailbox_dir / "announce").glob("*.gemmail*"))
+        assert len(files) == 0
+        store.close()
+
+    async def test_command_not_forwarded(self, tmp_path):
+        mailbox_dir = _setup_list(tmp_path, subscribers=["alice@sender.example"])
+        store = SubscriptionTokenStore()
+        handler = self._make_handler(mailbox_dir, store)
+
+        msg = _make_command_message(
+            "alice@sender.example",
+            "announce@example.com",
+            "unsubscribe",
+        )
+        request = _make_request("announce", message=msg)
+
+        with patch.object(
+            handler, "_forward_to_list", new_callable=AsyncMock
+        ) as mock_forward:
+            await handler.handle_message(request)
+            await asyncio.sleep(0)
+            assert not mock_forward.called
+        store.close()
+
+    async def test_commands_ignored_without_store(self, tmp_path):
+        """Without subscription_store, commands flow as normal messages."""
+        mailbox_dir = _setup_list(tmp_path, subscribers=["alice@sender.example"])
+        handler = FileMailboxHandler(
+            mailbox_dir=mailbox_dir,
+            hostname="example.com",
+            lists_enabled=True,
+        )
+
+        msg = _make_command_message(
+            "alice@sender.example",
+            "announce@example.com",
+            "subscribe",
+        )
+        request = _make_request("announce", message=msg)
+        response = await handler.handle_message(request)
+        # Treated as a normal post, stored successfully
+        assert response.status == StatusCode.SUCCESS
+
+    async def test_commands_ignored_when_lists_disabled(self, tmp_path):
+        mailbox_dir = _setup_list(tmp_path, subscribers=[])
+        store = SubscriptionTokenStore()
+        handler = FileMailboxHandler(
+            mailbox_dir=mailbox_dir,
+            hostname="example.com",
+            lists_enabled=False,
+            subscription_store=store,
+        )
+
+        msg = _make_command_message(
+            "alice@sender.example",
+            "announce@example.com",
+            "subscribe",
+        )
+        request = _make_request("announce", message=msg)
+        response = await handler.handle_message(request)
+        # Treated as normal delivery
+        assert response.status == StatusCode.SUCCESS
+        store.close()
+
+    async def test_regular_message_flows_normally(self, tmp_path):
+        mailbox_dir = _setup_list(tmp_path, subscribers=["alice@sender.example"])
+        store = SubscriptionTokenStore()
+        handler = self._make_handler(mailbox_dir, store)
+
+        msg = _make_valid_message("alice@sender.example")
+        request = _make_request("announce", message=msg)
+        response = await handler.handle_message(request)
+        assert response.status == StatusCode.SUCCESS
+
+        files = list((mailbox_dir / "announce").glob("*.gemmail*"))
+        assert len(files) >= 1
+        store.close()
+
+    async def test_subscribe_with_heading(self, tmp_path):
+        """Test that '# subscribe' (gemtext heading) also works."""
+        mailbox_dir = _setup_list(tmp_path, subscribers=[])
+        store = SubscriptionTokenStore()
+        handler = self._make_handler(mailbox_dir, store)
+
+        msg = _make_command_message(
+            "alice@sender.example",
+            "announce@example.com",
+            "# subscribe",
+        )
+        request = _make_request("announce", message=msg)
+
+        with patch.object(
+            handler,
+            "_send_confirmation_message",
+            new_callable=AsyncMock,
+        ):
+            response = await handler.handle_message(request)
+            await asyncio.sleep(0)
+
+        assert response.status == StatusCode.SUCCESS
+        assert "Confirmation sent" in response.meta
+        store.close()
