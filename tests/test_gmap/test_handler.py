@@ -252,6 +252,85 @@ class TestGmapHandlerRoutes:
         assert "20260211T130000Z" in body
 
 
+class TestGmapListRoutes:
+    """Test /list/ discovery and info routes."""
+
+    @pytest.fixture
+    def setup_lists(self, tmp_path, create_gemmail):
+        """Create mailbox_dir with two lists and one regular mailbox."""
+        # Mailing list: dev-announce
+        dev = tmp_path / "dev-announce"
+        dev.mkdir()
+        (dev / "subscribers.txt").write_text(
+            "# Development announcements\nalice@example.com\nbob@example.com\n"
+        )
+        create_gemmail(dev, "20260211T120000Z")
+        create_gemmail(dev, "20260211T130000Z")
+
+        # Mailing list: general
+        gen = tmp_path / "general"
+        gen.mkdir()
+        (gen / "subscribers.txt").write_text("carol@example.com\n")
+        create_gemmail(gen, "20260211T140000Z")
+
+        # Regular mailbox (no subscribers.txt)
+        personal = tmp_path / "alice"
+        personal.mkdir()
+        create_gemmail(personal, "20260211T150000Z")
+
+        handler = GmapHandler(mailbox_dir=tmp_path, hostname="example.com")
+        return handler
+
+    async def test_list_discovery(self, setup_lists, make_gmap_request):
+        handler = setup_lists
+        req = make_gmap_request("/list/")
+        resp = await handler.handle_request(req)
+        assert resp.status == SUCCESS
+        assert resp.meta == "text/gemini"
+        body = resp.body.decode()
+        assert "dev-announce" in body
+        assert "general" in body
+        assert "alice" not in body
+
+    async def test_list_discovery_no_cert(self, setup_lists):
+        handler = setup_lists
+        req = GeminiRequest(
+            url="gemini://example.com/list/",
+            hostname="example.com",
+            path="/list/",
+            query=None,
+            client_cert=None,
+        )
+        resp = await handler.handle_request(req)
+        assert resp.status == SUCCESS
+
+    async def test_list_info(self, setup_lists, make_gmap_request):
+        handler = setup_lists
+        req = make_gmap_request("/list/dev-announce/info")
+        resp = await handler.handle_request(req)
+        assert resp.status == SUCCESS
+        assert resp.meta == "text/gemini"
+        body = resp.body.decode()
+        assert "# dev-announce" in body
+        assert "Development announcements" in body
+        assert "Subscribers: 2" in body
+        assert "Messages: 2" in body
+        assert "=> misfin:dev-announce@example.com?subscribe" in body
+        assert "=> misfin:dev-announce@example.com?unsubscribe" in body
+
+    async def test_list_info_not_found(self, setup_lists, make_gmap_request):
+        handler = setup_lists
+        req = make_gmap_request("/list/nonexistent/info")
+        resp = await handler.handle_request(req)
+        assert resp.status == NOT_FOUND
+
+    async def test_list_unknown_route(self, setup_lists, make_gmap_request):
+        handler = setup_lists
+        req = make_gmap_request("/list/dev-announce/unknown")
+        resp = await handler.handle_request(req)
+        assert resp.status == NOT_FOUND
+
+
 class TestGmapFingerprintVerification:
     """Test fingerprint-based authentication for GMAP."""
 

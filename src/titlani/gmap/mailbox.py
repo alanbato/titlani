@@ -15,10 +15,12 @@ from pathlib import Path
 
 from tlacacoca import get_logger
 
+from ..server.lists import is_mailing_list
+
 logger = get_logger(__name__)
 
 REQUIRED_TAGS = frozenset({"Inbox", "Archive", "Sent", "Drafts", "Trash", "Unread"})
-TAG_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+TAG_PATTERN = re.compile(r"^[a-zA-Z0-9_:-]+$")
 INDEX_VERSION = 1
 
 
@@ -37,6 +39,7 @@ class GmapMailbox:
         self.index_path = mailbox_path / ".gmap.json"
         self.messages: dict[str, MessageEntry] = {}
         self._loaded = False
+        self._is_list = is_mailing_list(mailbox_path)
 
     def load(self) -> None:
         """Load index from disk. Creates empty index if missing."""
@@ -131,8 +134,11 @@ class GmapMailbox:
                     continue
 
                 ts = _parse_timestamp_from_msgid(msgid)
+                tags = {"Inbox", "Unread"}
+                if self._is_list:
+                    tags.add("List")
                 self.messages[msgid] = MessageEntry(
-                    tags={"Inbox", "Unread"},
+                    tags=tags,
                     timestamp=ts,
                     filename=path.name,
                 )

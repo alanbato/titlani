@@ -22,6 +22,28 @@ def is_mailing_list(mailbox_path: Path) -> bool:
     return (mailbox_path / SUBSCRIBERS_FILE).exists()
 
 
+def get_list_description(mailbox_path: Path) -> str | None:
+    """Read the first comment line from subscribers.txt as the list description.
+
+    Returns the comment text (without the leading ``# ``) or ``None``
+    if the file is missing or contains no comment lines.
+    """
+    subscribers_file = mailbox_path / SUBSCRIBERS_FILE
+    if not subscribers_file.exists():
+        return None
+
+    try:
+        lines = subscribers_file.read_text().strip().splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+    for line in lines:
+        line = line.strip()
+        if line.startswith("#"):
+            return line.lstrip("#").strip()
+    return None
+
+
 def load_subscribers(mailbox_path: Path) -> list[str]:
     """Parse subscribers.txt into a list of lowercase addresses.
 

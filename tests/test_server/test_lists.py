@@ -2,6 +2,7 @@
 
 from titlani.content.gemmail import GemmailMessage, MisfinAddress
 from titlani.server.lists import (
+    get_list_description,
     get_or_create_list_identity,
     is_mailing_list,
     is_subscriber,
@@ -21,6 +22,25 @@ class TestIsMailingList:
     def test_true_for_empty_subscribers_file(self, tmp_path):
         (tmp_path / "subscribers.txt").write_text("")
         assert is_mailing_list(tmp_path) is True
+
+
+class TestGetListDescription:
+    def test_returns_first_comment(self, tmp_path):
+        (tmp_path / "subscribers.txt").write_text(
+            "# Development announcements\nalice@example.com\n"
+        )
+        assert get_list_description(tmp_path) == "Development announcements"
+
+    def test_returns_none_when_no_comments(self, tmp_path):
+        (tmp_path / "subscribers.txt").write_text("alice@example.com\n")
+        assert get_list_description(tmp_path) is None
+
+    def test_returns_none_when_file_missing(self, tmp_path):
+        assert get_list_description(tmp_path) is None
+
+    def test_strips_multiple_hashes(self, tmp_path):
+        (tmp_path / "subscribers.txt").write_text("## My List\n")
+        assert get_list_description(tmp_path) == "My List"
 
 
 class TestLoadSubscribers:

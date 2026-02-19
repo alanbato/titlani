@@ -215,6 +215,48 @@ class TestGmapMailboxSync:
         assert mbox.is_encrypted("20260211T120000Z")
 
 
+class TestValidTag:
+    def test_accepts_colon_tag(self, tmp_path):
+        from titlani.gmap.mailbox import _valid_tag
+
+        assert _valid_tag("List:foo") is True
+
+    def test_accepts_simple_tag(self, tmp_path):
+        from titlani.gmap.mailbox import _valid_tag
+
+        assert _valid_tag("Inbox") is True
+
+    def test_rejects_space_tag(self, tmp_path):
+        from titlani.gmap.mailbox import _valid_tag
+
+        assert _valid_tag("bad tag") is False
+
+
+class TestGmapMailboxSyncList:
+    def test_sync_adds_list_tag_for_mailing_list(self, tmp_path):
+        (tmp_path / "subscribers.txt").write_text("alice@example.com\n")
+        _create_gemmail(tmp_path, "20260211T120000Z")
+
+        mbox = GmapMailbox(tmp_path)
+        mbox.load()
+        mbox.sync_filesystem()
+
+        entry = mbox.messages["20260211T120000Z"]
+        assert "List" in entry.tags
+        assert "Inbox" in entry.tags
+        assert "Unread" in entry.tags
+
+    def test_sync_no_list_tag_for_regular_mailbox(self, tmp_path):
+        _create_gemmail(tmp_path, "20260211T120000Z")
+
+        mbox = GmapMailbox(tmp_path)
+        mbox.load()
+        mbox.sync_filesystem()
+
+        entry = mbox.messages["20260211T120000Z"]
+        assert "List" not in entry.tags
+
+
 class TestGmapMailboxTags:
     def _make_indexed_mbox(self, tmp_path):
         _create_gemmail(tmp_path, "20260211T120000Z")

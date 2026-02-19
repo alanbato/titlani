@@ -14,6 +14,11 @@ from cryptography import x509
 from tlacacoca import get_certificate_fingerprint, get_logger
 
 from ..identity.certificate import extract_identity, normalize_fingerprint
+from ..server.lists import (
+    get_list_description,
+    is_mailing_list,
+    load_subscribers,
+)
 from .mailbox import GmapMailbox, _valid_tag
 
 logger = get_logger(__name__)
@@ -57,6 +62,8 @@ _TAG_NAME_RE = re.compile(r"^/tag/([^/?]+)$")
 _TAG_NAME_SINCE_RE = re.compile(r"^/tag/([^/?]+)/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$")
 _UNTAG_RE = re.compile(r"^/untag/([^/?]+)$")
 _DELETE_RE = re.compile(r"^/delete$")
+_LIST_RE = re.compile(r"^/list/$")
+_LIST_INFO_RE = re.compile(r"^/list/([^/?]+)/info$")
 
 
 class GmapHandler:
@@ -95,7 +102,24 @@ class GmapHandler:
         return None
 
     async def handle_request(self, request: GeminiRequest) -> GeminiResponse:
-        # Verify client certificate
+        # Public /list/ routes — no cert required
+        if request.path.startswith("/list/"):
+            return self._route_list(request.path)
+
+        # Authenticate and resolve mailbox
+        result = self._authenticate(request)
+        if isinstance(result, GeminiResponse):
+            return result
+
+        mbox = result
+        if mbox.sync_filesystem():
+            mbox.save()
+
+        return self._route(request.path, request.query, mbox, request)
+
+    def _authenticate(self, request: GeminiRequest) -> GmapMailbox | GeminiResponse:
+        """Verify client cert and resolve mailbox. Returns the mailbox
+        on success or an error response on failure."""
         if request.client_cert is None:
             return GeminiResponse(CERT_REQUIRED, "Client certificate required")
 
@@ -107,7 +131,6 @@ class GmapHandler:
         if not identity.mailbox or not identity.hostname:
             return GeminiResponse(CERT_NOT_AUTHORIZED, "Certificate missing identity")
 
-        # Resolve mailbox directory (with path traversal protection)
         mailbox = identity.mailbox
         if (
             not mailbox
@@ -119,7 +142,6 @@ class GmapHandler:
         ):
             return GeminiResponse(CERT_NOT_AUTHORIZED, "Invalid mailbox name")
 
-        # Verify client cert fingerprint against registered identity
         fp_error = self._verify_fingerprint(mailbox, request.client_cert)
         if fp_error is not None:
             return fp_error
@@ -136,17 +158,9 @@ class GmapHandler:
         if not mailbox_path.is_dir():
             return GeminiResponse(NOT_FOUND, "Mailbox not found")
 
-        # Load and sync index
         mbox = GmapMailbox(mailbox_path)
         mbox.load()
-        if mbox.sync_filesystem():
-            mbox.save()
-
-        # Route request
-        path = request.path
-        query = request.query
-
-        return self._route(path, query, mbox, request)
+        return mbox
 
     def _route(
         self,
@@ -265,6 +279,52 @@ class GmapHandler:
         mbox.remove_tag(msgid, tag)
         mbox.save()
         return GeminiResponse(SUCCESS, "text/plain", b"Tag removed")
+
+    def _route_list(self, path: str) -> GeminiResponse:
+        if _LIST_RE.match(path):
+            return self._handle_list_discovery()
+
+        m = _LIST_INFO_RE.match(path)
+        if m:
+            return self._handle_list_info(m.group(1))
+
+        return GeminiResponse(NOT_FOUND, "Unknown list route")
+
+    def _handle_list_discovery(self) -> GeminiResponse:
+        lines: list[str] = []
+        for entry in sorted(self.mailbox_dir.iterdir()):
+            if entry.is_dir() and is_mailing_list(entry):
+                lines.append(f"=> /list/{entry.name} {entry.name}")
+        body = "\n".join(lines) + "\n" if lines else ""
+        return GeminiResponse(SUCCESS, "text/gemini", body.encode("utf-8"))
+
+    def _handle_list_info(self, name: str) -> GeminiResponse:
+        list_path = self.mailbox_dir / name
+        if not list_path.is_dir() or not is_mailing_list(list_path):
+            return GeminiResponse(NOT_FOUND, "List not found")
+
+        description = get_list_description(list_path) or ""
+        subscribers = load_subscribers(list_path)
+        msg_count = sum(
+            1
+            for p in list_path.iterdir()
+            if p.name.endswith(".gemmail")
+            or p.name.endswith(".gemmail.new")
+            or p.name.endswith(".gemmail.enc")
+            or p.name.endswith(".gemmail.enc.new")
+        )
+        address = f"{name}@{self.hostname}"
+
+        lines = [f"# {name}"]
+        if description:
+            lines.append(description)
+        lines.append(f"Subscribers: {len(subscribers)}")
+        lines.append(f"Messages: {msg_count}")
+        lines.append("")
+        lines.append(f"=> misfin:{address}?subscribe Subscribe to this list")
+        lines.append(f"=> misfin:{address}?unsubscribe Unsubscribe from this list")
+        body = "\n".join(lines) + "\n"
+        return GeminiResponse(SUCCESS, "text/gemini", body.encode("utf-8"))
 
     def _handle_delete(self, msgid: str, mbox: GmapMailbox) -> GeminiResponse:
         if not mbox.has_message(msgid):
