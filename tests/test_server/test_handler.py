@@ -11,37 +11,13 @@ from titlani.protocol.status import StatusCode
 from titlani.server.handler import FileMailboxHandler
 
 
-def _make_valid_message() -> bytes:
-    """Return a minimal valid gemmail message body."""
-    return b"alice@sender.example\nbob@example.com\n2025-01-01T00:00:00Z\nHello!\n"
-
-
-def _make_request(
-    mailbox: str,
-    hostname: str = "example.com",
-    message: bytes | None = None,
-) -> MisfinRequest:
-    if message is None:
-        message = _make_valid_message()
-    return MisfinRequest(
-        mailbox=mailbox,
-        hostname=hostname,
-        content_length=len(message),
-        raw_message=message,
-    )
-
-
 class TestFilePermissions:
-    async def test_written_gemmail_has_600_permissions(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
+    async def test_written_gemmail_has_600_permissions(
+        self, mailbox_dir, file_mailbox_handler, make_misfin_request
+    ):
         (mailbox_dir / "bob").mkdir()
-
-        handler = FileMailboxHandler(
-            mailbox_dir=mailbox_dir,
-            hostname="example.com",
-        )
-        request = _make_request("bob")
+        handler = file_mailbox_handler()
+        request = make_misfin_request()
         response = await handler.handle_message(request)
 
         assert response.status == StatusCode.SUCCESS
@@ -53,29 +29,21 @@ class TestFilePermissions:
 
 
 class TestMailboxSanitization:
-    async def test_valid_mailbox_name(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
+    async def test_valid_mailbox_name(
+        self, mailbox_dir, file_mailbox_handler, make_misfin_request
+    ):
         (mailbox_dir / "alice").mkdir()
-
-        handler = FileMailboxHandler(
-            mailbox_dir=mailbox_dir,
-            hostname="example.com",
-        )
-        request = _make_request("alice")
+        handler = file_mailbox_handler()
+        request = make_misfin_request(mailbox="alice")
         response = await handler.handle_message(request)
         assert response.status == StatusCode.SUCCESS
 
-    async def test_valid_mailbox_with_dots_and_dashes(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
+    async def test_valid_mailbox_with_dots_and_dashes(
+        self, mailbox_dir, file_mailbox_handler, make_misfin_request
+    ):
         (mailbox_dir / "alice.bob-carol_dave").mkdir()
-
-        handler = FileMailboxHandler(
-            mailbox_dir=mailbox_dir,
-            hostname="example.com",
-        )
-        request = _make_request("alice.bob-carol_dave")
+        handler = file_mailbox_handler()
+        request = make_misfin_request(mailbox="alice.bob-carol_dave")
         response = await handler.handle_message(request)
         assert response.status == StatusCode.SUCCESS
 
@@ -91,99 +59,90 @@ class TestMailboxSanitization:
             "",
         ],
     )
-    async def test_traversal_names_rejected(self, tmp_path, mailbox):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
-
-        handler = FileMailboxHandler(
-            mailbox_dir=mailbox_dir,
-            hostname="example.com",
-        )
-        request = _make_request(mailbox)
+    async def test_traversal_names_rejected(
+        self, mailbox_dir, file_mailbox_handler, make_misfin_request, mailbox
+    ):
+        handler = file_mailbox_handler()
+        request = make_misfin_request(mailbox=mailbox)
         response = await handler.handle_message(request)
         assert response.status == StatusCode.BAD_REQUEST
 
-    async def test_double_dot_name_rejected(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
-
-        handler = FileMailboxHandler(
-            mailbox_dir=mailbox_dir,
-            hostname="example.com",
-        )
-        request = _make_request("..")
+    async def test_double_dot_name_rejected(
+        self, mailbox_dir, file_mailbox_handler, make_misfin_request
+    ):
+        handler = file_mailbox_handler()
+        request = make_misfin_request(mailbox="..")
         response = await handler.handle_message(request)
         assert response.status == StatusCode.BAD_REQUEST
 
 
 class TestSenderBlocking:
-    async def test_blocked_sender_rejected(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
+    async def test_blocked_sender_rejected(
+        self, mailbox_dir, file_mailbox_handler, make_misfin_request
+    ):
         mbox = mailbox_dir / "bob"
         mbox.mkdir()
         (mbox / ".blocked").write_text("alice@sender.example\n")
 
-        handler = FileMailboxHandler(mailbox_dir=mailbox_dir, hostname="example.com")
-        request = _make_request("bob")
+        handler = file_mailbox_handler()
+        request = make_misfin_request()
         response = await handler.handle_message(request)
         assert response.status == StatusCode.UNAUTHORIZED_SENDER
 
-    async def test_unblocked_sender_accepted(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
+    async def test_unblocked_sender_accepted(
+        self, mailbox_dir, file_mailbox_handler, make_misfin_request
+    ):
         mbox = mailbox_dir / "bob"
         mbox.mkdir()
         (mbox / ".blocked").write_text("evil@spam.example\n")
 
-        handler = FileMailboxHandler(mailbox_dir=mailbox_dir, hostname="example.com")
-        request = _make_request("bob")
+        handler = file_mailbox_handler()
+        request = make_misfin_request()
         response = await handler.handle_message(request)
         assert response.status == StatusCode.SUCCESS
 
-    async def test_no_blocked_file_allows_all(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
+    async def test_no_blocked_file_allows_all(
+        self, mailbox_dir, file_mailbox_handler, make_misfin_request
+    ):
         (mailbox_dir / "bob").mkdir()
-
-        handler = FileMailboxHandler(mailbox_dir=mailbox_dir, hostname="example.com")
-        request = _make_request("bob")
+        handler = file_mailbox_handler()
+        request = make_misfin_request()
         response = await handler.handle_message(request)
         assert response.status == StatusCode.SUCCESS
 
-    async def test_case_insensitive_matching(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
+    async def test_case_insensitive_matching(
+        self, mailbox_dir, file_mailbox_handler, make_misfin_request
+    ):
         mbox = mailbox_dir / "bob"
         mbox.mkdir()
         (mbox / ".blocked").write_text("Alice@Sender.Example\n")
 
-        handler = FileMailboxHandler(mailbox_dir=mailbox_dir, hostname="example.com")
-        request = _make_request("bob")
+        handler = file_mailbox_handler()
+        request = make_misfin_request()
         response = await handler.handle_message(request)
         assert response.status == StatusCode.UNAUTHORIZED_SENDER
 
-    async def test_empty_blocked_file_allows_all(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
+    async def test_empty_blocked_file_allows_all(
+        self, mailbox_dir, file_mailbox_handler, make_misfin_request
+    ):
         mbox = mailbox_dir / "bob"
         mbox.mkdir()
         (mbox / ".blocked").write_text("\n\n")
 
-        handler = FileMailboxHandler(mailbox_dir=mailbox_dir, hostname="example.com")
-        request = _make_request("bob")
+        handler = file_mailbox_handler()
+        request = make_misfin_request()
         response = await handler.handle_message(request)
         assert response.status == StatusCode.SUCCESS
 
-    async def test_multiple_blocked_addresses(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
+    async def test_multiple_blocked_addresses(
+        self, mailbox_dir, file_mailbox_handler, make_misfin_request
+    ):
         mbox = mailbox_dir / "bob"
         mbox.mkdir()
         (mbox / ".blocked").write_text("alice@sender.example\nspam@evil.com\n")
 
-        handler = FileMailboxHandler(mailbox_dir=mailbox_dir, hostname="example.com")
-        request = _make_request("bob")
+        handler = file_mailbox_handler()
+        request = make_misfin_request()
         response = await handler.handle_message(request)
         assert response.status == StatusCode.UNAUTHORIZED_SENDER
 
@@ -293,16 +252,9 @@ class TestAutoReplyShould:
 
 
 class TestMailboxSanitizationProbe:
-    async def test_probe_bypasses_sanitization(self, tmp_path):
+    async def test_probe_bypasses_sanitization(self, mailbox_dir, file_mailbox_handler):
         """Zero-length verification probes don't use mailbox path."""
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
-
-        handler = FileMailboxHandler(
-            mailbox_dir=mailbox_dir,
-            hostname="example.com",
-            identity_cert_fingerprint="abc123",
-        )
+        handler = file_mailbox_handler(identity_cert_fingerprint="abc123")
         request = MisfinRequest(
             mailbox="../etc",
             hostname="example.com",

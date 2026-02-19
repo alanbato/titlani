@@ -2,8 +2,6 @@
 
 import pytest
 from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from titlani.encryption.manager import (
     _EPHEMERAL_KEY_SIZE,
@@ -12,34 +10,11 @@ from titlani.encryption.manager import (
 )
 
 
-def _generate_keypair(tmp_path, mailbox):
-    """Generate X25519 PEM key files and return (private_key_path, public_key_path)."""
-    private_key = X25519PrivateKey.generate()
-
-    priv_pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption(),
-    )
-    pub_pem = private_key.public_key().public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo,
-    )
-
-    priv_path = tmp_path / f"{mailbox}.enc.key"
-    pub_path = tmp_path / f"{mailbox}.enc.pub"
-    priv_path.write_bytes(priv_pem)
-    pub_path.write_bytes(pub_pem)
-
-    return priv_path, pub_path
-
-
 class TestEncryptionManager:
-    def test_encrypt_decrypt_roundtrip(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
-
-        priv_path, _ = _generate_keypair(tmp_path, "alice")
+    def test_encrypt_decrypt_roundtrip(
+        self, mailbox_dir, tmp_path, generate_x25519_keypair
+    ):
+        priv_path, _ = generate_x25519_keypair(tmp_path, "alice")
 
         mgr = EncryptionManager(mailbox_dir)
         mgr.load_key_for_mailbox("alice", priv_path)
@@ -50,12 +25,11 @@ class TestEncryptionManager:
         decrypted = mgr.decrypt("alice", encrypted)
         assert decrypted == plaintext
 
-    def test_wrong_key_fails_to_decrypt(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
-
-        priv_a, _ = _generate_keypair(tmp_path, "alice")
-        priv_b, _ = _generate_keypair(tmp_path, "bob")
+    def test_wrong_key_fails_to_decrypt(
+        self, mailbox_dir, tmp_path, generate_x25519_keypair
+    ):
+        priv_a, _ = generate_x25519_keypair(tmp_path, "alice")
+        priv_b, _ = generate_x25519_keypair(tmp_path, "bob")
 
         mgr_a = EncryptionManager(mailbox_dir)
         mgr_a.load_key_for_mailbox("alice", priv_a)
@@ -68,11 +42,8 @@ class TestEncryptionManager:
         with pytest.raises(InvalidTag):
             mgr_b.decrypt("bob", encrypted)
 
-    def test_has_key(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
-
-        priv_path, _ = _generate_keypair(tmp_path, "alice")
+    def test_has_key(self, mailbox_dir, tmp_path, generate_x25519_keypair):
+        priv_path, _ = generate_x25519_keypair(tmp_path, "alice")
 
         mgr = EncryptionManager(mailbox_dir)
         assert not mgr.has_key("alice")
@@ -80,29 +51,22 @@ class TestEncryptionManager:
         mgr.load_key_for_mailbox("alice", priv_path)
         assert mgr.has_key("alice")
 
-    def test_encrypt_without_key_raises(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
-
+    def test_encrypt_without_key_raises(self, mailbox_dir):
         mgr = EncryptionManager(mailbox_dir)
 
         with pytest.raises(ValueError, match="No encryption key"):
             mgr.encrypt("alice", b"data")
 
-    def test_decrypt_without_key_raises(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
-
+    def test_decrypt_without_key_raises(self, mailbox_dir):
         mgr = EncryptionManager(mailbox_dir)
 
         with pytest.raises(ValueError, match="No private key"):
             mgr.decrypt("alice", b"x" * 100)
 
-    def test_load_public_key_encrypt_only(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
-
-        priv_path, pub_path = _generate_keypair(tmp_path, "alice")
+    def test_load_public_key_encrypt_only(
+        self, mailbox_dir, tmp_path, generate_x25519_keypair
+    ):
+        priv_path, pub_path = generate_x25519_keypair(tmp_path, "alice")
 
         # Load only public key
         mgr = EncryptionManager(mailbox_dir)
@@ -122,11 +86,10 @@ class TestEncryptionManager:
         decrypted = EncryptionManager.decrypt_with_key(priv_path, encrypted)
         assert decrypted == b"hello"
 
-    def test_decrypt_with_key_classmethod(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
-
-        priv_path, _ = _generate_keypair(tmp_path, "alice")
+    def test_decrypt_with_key_classmethod(
+        self, mailbox_dir, tmp_path, generate_x25519_keypair
+    ):
+        priv_path, _ = generate_x25519_keypair(tmp_path, "alice")
 
         mgr = EncryptionManager(mailbox_dir)
         mgr.load_key_for_mailbox("alice", priv_path)
@@ -137,11 +100,8 @@ class TestEncryptionManager:
         decrypted = EncryptionManager.decrypt_with_key(priv_path, encrypted)
         assert decrypted == plaintext
 
-    def test_encrypted_data_format(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
-
-        priv_path, _ = _generate_keypair(tmp_path, "alice")
+    def test_encrypted_data_format(self, mailbox_dir, tmp_path, generate_x25519_keypair):
+        priv_path, _ = generate_x25519_keypair(tmp_path, "alice")
 
         mgr = EncryptionManager(mailbox_dir)
         mgr.load_key_for_mailbox("alice", priv_path)
@@ -163,11 +123,10 @@ class TestEncryptionManager:
         nonce2 = enc2[_EPHEMERAL_KEY_SIZE : _EPHEMERAL_KEY_SIZE + _NONCE_SIZE]
         assert nonce1 != nonce2
 
-    def test_decrypt_truncated_data_raises(self, tmp_path):
-        mailbox_dir = tmp_path / "mailboxes"
-        mailbox_dir.mkdir()
-
-        priv_path, _ = _generate_keypair(tmp_path, "alice")
+    def test_decrypt_truncated_data_raises(
+        self, mailbox_dir, tmp_path, generate_x25519_keypair
+    ):
+        priv_path, _ = generate_x25519_keypair(tmp_path, "alice")
 
         mgr = EncryptionManager(mailbox_dir)
         mgr.load_key_for_mailbox("alice", priv_path)

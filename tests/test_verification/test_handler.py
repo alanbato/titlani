@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from titlani.protocol.request import MisfinRequest
 from titlani.protocol.response import MisfinResponse
 from titlani.protocol.status import StatusCode
 from titlani.verification.handler import VerifyingHandler
@@ -30,34 +29,19 @@ def mock_verifier() -> AsyncMock:
     return AsyncMock(spec=ProbeVerifier)
 
 
-def _make_request(content_length: int = 100, raw_message: bytes = b"") -> MisfinRequest:
-    if content_length > 0 and not raw_message:
-        # Build a minimal valid gemmail
-        raw_message = (
-            b"sender@example.com Sender\n"
-            b"recipient@test.com\n"
-            b"2024-01-15T10:30:00Z\n"
-            b"Hello\n"
-        )
-        content_length = len(raw_message)
-    return MisfinRequest(
-        mailbox="test",
-        hostname="test.com",
-        content_length=content_length,
-        raw_message=raw_message,
-    )
-
-
 class TestVerifyingHandlerOff:
     async def test_mode_off_skips_verification(
-        self, wrapped_handler: AsyncMock, mock_verifier: AsyncMock
+        self,
+        wrapped_handler: AsyncMock,
+        mock_verifier: AsyncMock,
+        make_misfin_request,
     ) -> None:
         handler = VerifyingHandler(
             wrapped=wrapped_handler,
             verifier=mock_verifier,
             mode=VerificationMode.OFF,
         )
-        request = _make_request()
+        request = make_misfin_request()
         response = await handler.handle_message(request)
 
         assert response.status == StatusCode.SUCCESS
@@ -66,14 +50,17 @@ class TestVerifyingHandlerOff:
 
 class TestVerifyingHandlerProbeBypass:
     async def test_zero_length_skips_verification(
-        self, wrapped_handler: AsyncMock, mock_verifier: AsyncMock
+        self,
+        wrapped_handler: AsyncMock,
+        mock_verifier: AsyncMock,
+        make_misfin_request,
     ) -> None:
         handler = VerifyingHandler(
             wrapped=wrapped_handler,
             verifier=mock_verifier,
             mode=VerificationMode.REQUIRED,
         )
-        request = _make_request(content_length=0)
+        request = make_misfin_request(content_length=0, raw_message=b"")
         response = await handler.handle_message(request)
 
         assert response.status == StatusCode.SUCCESS
@@ -82,7 +69,10 @@ class TestVerifyingHandlerProbeBypass:
 
 class TestVerifyingHandlerOptional:
     async def test_verified_sender_passes(
-        self, wrapped_handler: AsyncMock, mock_verifier: AsyncMock
+        self,
+        wrapped_handler: AsyncMock,
+        mock_verifier: AsyncMock,
+        make_misfin_request,
     ) -> None:
         mock_verifier.verify_sender.return_value = VerificationResult(
             verified=True, fingerprint="abc123"
@@ -92,13 +82,16 @@ class TestVerifyingHandlerOptional:
             verifier=mock_verifier,
             mode=VerificationMode.OPTIONAL,
         )
-        request = _make_request()
+        request = make_misfin_request()
         response = await handler.handle_message(request)
 
         assert response.status == StatusCode.SUCCESS
 
     async def test_unverified_sender_still_passes(
-        self, wrapped_handler: AsyncMock, mock_verifier: AsyncMock
+        self,
+        wrapped_handler: AsyncMock,
+        mock_verifier: AsyncMock,
+        make_misfin_request,
     ) -> None:
         mock_verifier.verify_sender.return_value = VerificationResult(
             verified=False, reason="timeout"
@@ -108,13 +101,16 @@ class TestVerifyingHandlerOptional:
             verifier=mock_verifier,
             mode=VerificationMode.OPTIONAL,
         )
-        request = _make_request()
+        request = make_misfin_request()
         response = await handler.handle_message(request)
 
         assert response.status == StatusCode.SUCCESS
 
     async def test_no_senders_passes(
-        self, wrapped_handler: AsyncMock, mock_verifier: AsyncMock
+        self,
+        wrapped_handler: AsyncMock,
+        mock_verifier: AsyncMock,
+        make_misfin_request,
     ) -> None:
         handler = VerifyingHandler(
             wrapped=wrapped_handler,
@@ -123,7 +119,7 @@ class TestVerifyingHandlerOptional:
         )
         # Message with empty senders line
         raw = b"\nrecipient@test.com\n2024-01-15T10:30:00Z\nHello\n"
-        request = _make_request(content_length=len(raw), raw_message=raw)
+        request = make_misfin_request(raw_message=raw)
         response = await handler.handle_message(request)
 
         assert response.status == StatusCode.SUCCESS
@@ -132,7 +128,10 @@ class TestVerifyingHandlerOptional:
 
 class TestVerifyingHandlerRequired:
     async def test_verified_sender_passes(
-        self, wrapped_handler: AsyncMock, mock_verifier: AsyncMock
+        self,
+        wrapped_handler: AsyncMock,
+        mock_verifier: AsyncMock,
+        make_misfin_request,
     ) -> None:
         mock_verifier.verify_sender.return_value = VerificationResult(
             verified=True, fingerprint="abc123"
@@ -142,13 +141,16 @@ class TestVerifyingHandlerRequired:
             verifier=mock_verifier,
             mode=VerificationMode.REQUIRED,
         )
-        request = _make_request()
+        request = make_misfin_request()
         response = await handler.handle_message(request)
 
         assert response.status == StatusCode.SUCCESS
 
     async def test_unverified_sender_rejected(
-        self, wrapped_handler: AsyncMock, mock_verifier: AsyncMock
+        self,
+        wrapped_handler: AsyncMock,
+        mock_verifier: AsyncMock,
+        make_misfin_request,
     ) -> None:
         mock_verifier.verify_sender.return_value = VerificationResult(
             verified=False, reason="timeout"
@@ -158,13 +160,16 @@ class TestVerifyingHandlerRequired:
             verifier=mock_verifier,
             mode=VerificationMode.REQUIRED,
         )
-        request = _make_request()
+        request = make_misfin_request()
         response = await handler.handle_message(request)
 
         assert response.status == StatusCode.UNAUTHORIZED_SENDER
 
     async def test_no_senders_rejected(
-        self, wrapped_handler: AsyncMock, mock_verifier: AsyncMock
+        self,
+        wrapped_handler: AsyncMock,
+        mock_verifier: AsyncMock,
+        make_misfin_request,
     ) -> None:
         handler = VerifyingHandler(
             wrapped=wrapped_handler,
@@ -172,14 +177,17 @@ class TestVerifyingHandlerRequired:
             mode=VerificationMode.REQUIRED,
         )
         raw = b"\nrecipient@test.com\n2024-01-15T10:30:00Z\nHello\n"
-        request = _make_request(content_length=len(raw), raw_message=raw)
+        request = make_misfin_request(raw_message=raw)
         response = await handler.handle_message(request)
 
         assert response.status == StatusCode.UNAUTHORIZED_SENDER
         mock_verifier.verify_sender.assert_not_called()
 
     async def test_invalid_message_forwarded(
-        self, wrapped_handler: AsyncMock, mock_verifier: AsyncMock
+        self,
+        wrapped_handler: AsyncMock,
+        mock_verifier: AsyncMock,
+        make_misfin_request,
     ) -> None:
         """Invalid messages are passed to wrapped handler for its error."""
         wrapped_handler.handle_message.return_value = MisfinResponse(
@@ -190,7 +198,7 @@ class TestVerifyingHandlerRequired:
             verifier=mock_verifier,
             mode=VerificationMode.REQUIRED,
         )
-        request = _make_request(content_length=3, raw_message=b"bad")
+        request = make_misfin_request(content_length=3, raw_message=b"bad")
         response = await handler.handle_message(request)
 
         # The VerifyingHandler catches the parse error and returns BAD_REQUEST
@@ -199,7 +207,10 @@ class TestVerifyingHandlerRequired:
 
 class TestVerificationResultOnRequest:
     async def test_result_attached_to_request(
-        self, wrapped_handler: AsyncMock, mock_verifier: AsyncMock
+        self,
+        wrapped_handler: AsyncMock,
+        mock_verifier: AsyncMock,
+        make_misfin_request,
     ) -> None:
         """Verification result is set on the request before forwarding."""
         mock_verifier.verify_sender.return_value = VerificationResult(
@@ -211,7 +222,7 @@ class TestVerificationResultOnRequest:
             mode=VerificationMode.OPTIONAL,
             method=VerificationMethod.PROBE,
         )
-        request = _make_request()
+        request = make_misfin_request()
         await handler.handle_message(request)
 
         assert request.verification_result is not None
@@ -220,7 +231,10 @@ class TestVerificationResultOnRequest:
         assert "probe" in request.verification_result.checks
 
     async def test_wrap_result_single_method(
-        self, wrapped_handler: AsyncMock, mock_verifier: AsyncMock
+        self,
+        wrapped_handler: AsyncMock,
+        mock_verifier: AsyncMock,
+        make_misfin_request,
     ) -> None:
         """Single-method result gets wrapped with checks dict."""
         mock_verifier.verify_sender.return_value = VerificationResult(
@@ -232,7 +246,7 @@ class TestVerificationResultOnRequest:
             mode=VerificationMode.OPTIONAL,
             method=VerificationMethod.SPKI,
         )
-        request = _make_request()
+        request = make_misfin_request()
         await handler.handle_message(request)
 
         vr = request.verification_result
@@ -241,7 +255,7 @@ class TestVerificationResultOnRequest:
         assert vr.checks["spki"].verified is True
 
     async def test_combined_result_not_double_wrapped(
-        self, wrapped_handler: AsyncMock
+        self, wrapped_handler: AsyncMock, make_misfin_request
     ) -> None:
         """CombinedVerifier results with existing checks are not re-wrapped."""
         inner_checks = {
@@ -262,27 +276,33 @@ class TestVerificationResultOnRequest:
             mode=VerificationMode.OPTIONAL,
             method=VerificationMethod.PROBE_SPKI,
         )
-        request = _make_request()
+        request = make_misfin_request()
         await handler.handle_message(request)
 
         vr = request.verification_result
         assert vr.checks is inner_checks
 
     async def test_no_result_when_mode_off(
-        self, wrapped_handler: AsyncMock, mock_verifier: AsyncMock
+        self,
+        wrapped_handler: AsyncMock,
+        mock_verifier: AsyncMock,
+        make_misfin_request,
     ) -> None:
         handler = VerifyingHandler(
             wrapped=wrapped_handler,
             verifier=mock_verifier,
             mode=VerificationMode.OFF,
         )
-        request = _make_request()
+        request = make_misfin_request()
         await handler.handle_message(request)
 
         assert request.verification_result is None
 
     async def test_failed_result_attached_in_optional_mode(
-        self, wrapped_handler: AsyncMock, mock_verifier: AsyncMock
+        self,
+        wrapped_handler: AsyncMock,
+        mock_verifier: AsyncMock,
+        make_misfin_request,
     ) -> None:
         mock_verifier.verify_sender.return_value = VerificationResult(
             verified=False, reason="timeout"
@@ -293,7 +313,7 @@ class TestVerificationResultOnRequest:
             mode=VerificationMode.OPTIONAL,
             method=VerificationMethod.PROBE,
         )
-        request = _make_request()
+        request = make_misfin_request()
         await handler.handle_message(request)
 
         assert request.verification_result is not None

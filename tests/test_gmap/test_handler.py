@@ -22,22 +22,6 @@ from titlani.identity.certificate import (
     normalize_fingerprint,
 )
 
-ALICE_FP = "aabbccdd0011223344556677889900aabbccdd0011223344556677889900aabb"
-
-
-def _create_gemmail(mailbox_path: Path, msgid: str, content: str = "") -> Path:
-    if not content:
-        content = (
-            "sender@example.com\n"
-            "recipient@example.com\n"
-            "2026-02-11T12:00:00Z\n"
-            "# Test message\n"
-            "Hello\n"
-        )
-    filepath = mailbox_path / f"{msgid}.gemmail"
-    filepath.write_text(content)
-    return filepath
-
 
 def _make_handler(tmp_path: Path) -> GmapHandler:
     return GmapHandler(mailbox_dir=tmp_path, hostname="example.com")
@@ -46,24 +30,6 @@ def _make_handler(tmp_path: Path) -> GmapHandler:
 def _mock_cert(mailbox: str = "alice", hostname: str = "example.com"):
     cert = MagicMock()
     return cert
-
-
-def _make_request(
-    path: str,
-    query: str | None = None,
-    mailbox: str = "alice",
-    hostname: str = "example.com",
-    client_cert=None,
-) -> GeminiRequest:
-    if client_cert is None:
-        client_cert = _mock_cert(mailbox, hostname)
-    return GeminiRequest(
-        url=f"gemini://example.com{path}",
-        hostname="example.com",
-        path=path,
-        query=query,
-        client_cert=client_cert,
-    )
 
 
 class TestParseGeminiRequest:
@@ -109,9 +75,9 @@ class TestGmapHandlerAuth:
         resp = await handler.handle_request(req)
         assert resp.status == CERT_REQUIRED
 
-    async def test_cert_missing_identity(self, tmp_path):
+    async def test_cert_missing_identity(self, tmp_path, make_gmap_request):
         handler = _make_handler(tmp_path)
-        req = _make_request("/tag/")
+        req = make_gmap_request("/tag/")
 
         with patch(
             "titlani.gmap.handler.extract_identity",
@@ -120,9 +86,9 @@ class TestGmapHandlerAuth:
             resp = await handler.handle_request(req)
         assert resp.status == CERT_NOT_AUTHORIZED
 
-    async def test_mailbox_not_found(self, tmp_path):
+    async def test_mailbox_not_found(self, tmp_path, make_gmap_request):
         handler = _make_handler(tmp_path)
-        req = _make_request("/tag/")
+        req = make_gmap_request("/tag/")
 
         with patch(
             "titlani.gmap.handler.extract_identity",
@@ -136,11 +102,11 @@ class TestGmapHandlerRoutes:
     """Test routes with a properly set up mailbox."""
 
     @pytest.fixture
-    def setup(self, tmp_path):
+    def setup(self, tmp_path, create_gemmail):
         mailbox_path = tmp_path / "alice"
         mailbox_path.mkdir()
-        _create_gemmail(mailbox_path, "20260211T120000Z")
-        _create_gemmail(mailbox_path, "20260211T130000Z")
+        create_gemmail(mailbox_path, "20260211T120000Z")
+        create_gemmail(mailbox_path, "20260211T130000Z")
         handler = _make_handler(tmp_path)
         return handler, mailbox_path
 
@@ -150,9 +116,9 @@ class TestGmapHandlerRoutes:
             return_value=MisfinIdentity(mailbox="alice", hostname="example.com"),
         )
 
-    async def test_msgid_success(self, setup):
+    async def test_msgid_success(self, setup, make_gmap_request):
         handler, _ = setup
-        req = _make_request("/msgid/20260211T120000Z")
+        req = make_gmap_request("/msgid/20260211T120000Z")
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
@@ -160,17 +126,17 @@ class TestGmapHandlerRoutes:
         assert resp.meta == "text/plain"
         assert b"sender@example.com" in resp.body
 
-    async def test_msgid_not_found(self, setup):
+    async def test_msgid_not_found(self, setup, make_gmap_request):
         handler, _ = setup
-        req = _make_request("/msgid/nonexistent")
+        req = make_gmap_request("/msgid/nonexistent")
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
         assert resp.status == NOT_FOUND
 
-    async def test_tag_list_all(self, setup):
+    async def test_tag_list_all(self, setup, make_gmap_request):
         handler, _ = setup
-        req = _make_request("/tag/")
+        req = make_gmap_request("/tag/")
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
@@ -179,9 +145,9 @@ class TestGmapHandlerRoutes:
         assert "20260211T120000Z" in body
         assert "20260211T130000Z" in body
 
-    async def test_tag_list_inbox(self, setup):
+    async def test_tag_list_inbox(self, setup, make_gmap_request):
         handler, _ = setup
-        req = _make_request("/tag/Inbox")
+        req = make_gmap_request("/tag/Inbox")
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
@@ -190,41 +156,41 @@ class TestGmapHandlerRoutes:
         assert "20260211T120000Z" in body
         assert "20260211T130000Z" in body
 
-    async def test_add_tag(self, setup):
+    async def test_add_tag(self, setup, make_gmap_request):
         handler, _ = setup
-        req = _make_request("/tag/Archive", query="20260211T120000Z")
+        req = make_gmap_request("/tag/Archive", query="20260211T120000Z")
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
         assert resp.status == SUCCESS
 
-    async def test_add_invalid_tag(self, setup):
+    async def test_add_invalid_tag(self, setup, make_gmap_request):
         handler, _ = setup
-        req = _make_request("/tag/bad tag!", query="20260211T120000Z")
+        req = make_gmap_request("/tag/bad tag!", query="20260211T120000Z")
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
         assert resp.status == BAD_REQUEST
 
-    async def test_remove_tag(self, setup):
+    async def test_remove_tag(self, setup, make_gmap_request):
         handler, _ = setup
-        req = _make_request("/untag/Unread", query="20260211T120000Z")
+        req = make_gmap_request("/untag/Unread", query="20260211T120000Z")
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
         assert resp.status == SUCCESS
 
-    async def test_remove_tag_missing_query(self, setup):
+    async def test_remove_tag_missing_query(self, setup, make_gmap_request):
         handler, _ = setup
-        req = _make_request("/untag/Unread")
+        req = make_gmap_request("/untag/Unread")
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
         assert resp.status == BAD_REQUEST
 
-    async def test_delete_requires_trash_tag(self, setup):
+    async def test_delete_requires_trash_tag(self, setup, make_gmap_request):
         handler, _ = setup
-        req = _make_request("/delete", query="20260211T120000Z")
+        req = make_gmap_request("/delete", query="20260211T120000Z")
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
@@ -232,50 +198,50 @@ class TestGmapHandlerRoutes:
         assert resp.status == NOT_FOUND
         assert "Trash" in resp.meta
 
-    async def test_delete_trash_message(self, setup):
+    async def test_delete_trash_message(self, setup, make_gmap_request):
         handler, mailbox_path = setup
         # First tag as Trash
-        req = _make_request("/tag/Trash", query="20260211T120000Z")
+        req = make_gmap_request("/tag/Trash", query="20260211T120000Z")
         with self._patch_identity():
             await handler.handle_request(req)
 
         # Now delete
-        req = _make_request("/delete", query="20260211T120000Z")
+        req = make_gmap_request("/delete", query="20260211T120000Z")
         with self._patch_identity():
             resp = await handler.handle_request(req)
         assert resp.status == SUCCESS
         assert not (mailbox_path / "20260211T120000Z.gemmail").exists()
 
-    async def test_delete_missing_query(self, setup):
+    async def test_delete_missing_query(self, setup, make_gmap_request):
         handler, _ = setup
-        req = _make_request("/delete")
+        req = make_gmap_request("/delete")
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
         assert resp.status == BAD_REQUEST
 
-    async def test_unknown_route(self, setup):
+    async def test_unknown_route(self, setup, make_gmap_request):
         handler, _ = setup
-        req = _make_request("/unknown/path")
+        req = make_gmap_request("/unknown/path")
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
         assert resp.status == NOT_FOUND
 
-    async def test_encrypted_message(self, setup):
+    async def test_encrypted_message(self, setup, make_gmap_request):
         handler, mailbox_path = setup
         # Create an encrypted file
         (mailbox_path / "20260211T140000Z.gemmail.enc").write_bytes(b"encrypted")
 
-        req = _make_request("/msgid/20260211T140000Z")
+        req = make_gmap_request("/msgid/20260211T140000Z")
         with self._patch_identity():
             resp = await handler.handle_request(req)
         assert resp.status == TEMP_FAILURE
         assert "encrypted" in resp.meta.lower()
 
-    async def test_tag_list_with_timestamp(self, setup):
+    async def test_tag_list_with_timestamp(self, setup, make_gmap_request):
         handler, _ = setup
-        req = _make_request("/tag/Inbox/2026-02-11T12:30:00Z")
+        req = make_gmap_request("/tag/Inbox/2026-02-11T12:30:00Z")
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
@@ -290,14 +256,14 @@ class TestGmapFingerprintVerification:
     """Test fingerprint-based authentication for GMAP."""
 
     @pytest.fixture
-    def setup_with_cert(self, tmp_path):
+    def setup_with_cert(self, tmp_path, create_gemmail):
         """Create a mailbox and real identity cert for fingerprint tests."""
         from cryptography.x509 import load_pem_x509_certificate
         from tlacacoca import get_certificate_fingerprint
 
         mailbox_path = tmp_path / "alice"
         mailbox_path.mkdir()
-        _create_gemmail(mailbox_path, "20260211T120000Z")
+        create_gemmail(mailbox_path, "20260211T120000Z")
 
         # Generate a real identity cert
         cert_pem, _ = generate_identity_cert(
@@ -315,34 +281,40 @@ class TestGmapFingerprintVerification:
             return_value=MisfinIdentity(mailbox="alice", hostname="example.com"),
         )
 
-    async def test_fingerprint_match_allows_access(self, setup_with_cert):
+    async def test_fingerprint_match_allows_access(
+        self, setup_with_cert, make_gmap_request
+    ):
         tmp_path, cert, fp = setup_with_cert
         handler = GmapHandler(
             mailbox_dir=tmp_path,
             hostname="example.com",
             recipient_fps={"alice": fp},
         )
-        req = _make_request("/tag/", client_cert=cert)
+        req = make_gmap_request("/tag/", client_cert=cert)
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
         assert resp.status == SUCCESS
 
-    async def test_fingerprint_mismatch_rejected(self, setup_with_cert):
+    async def test_fingerprint_mismatch_rejected(
+        self, setup_with_cert, make_gmap_request
+    ):
         tmp_path, cert, _ = setup_with_cert
         handler = GmapHandler(
             mailbox_dir=tmp_path,
             hostname="example.com",
             recipient_fps={"alice": "wrong" + "ff" * 31},
         )
-        req = _make_request("/tag/", client_cert=cert)
+        req = make_gmap_request("/tag/", client_cert=cert)
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
         assert resp.status == CERT_NOT_AUTHORIZED
         assert "mismatch" in resp.meta.lower()
 
-    async def test_missing_registered_fingerprint_rejected(self, setup_with_cert):
+    async def test_missing_registered_fingerprint_rejected(
+        self, setup_with_cert, make_gmap_request
+    ):
         tmp_path, cert, _ = setup_with_cert
         # Fingerprints exist for other mailboxes but not alice
         handler = GmapHandler(
@@ -350,14 +322,16 @@ class TestGmapFingerprintVerification:
             hostname="example.com",
             recipient_fps={"bob": "aa" * 32},
         )
-        req = _make_request("/tag/", client_cert=cert)
+        req = make_gmap_request("/tag/", client_cert=cert)
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
         assert resp.status == CERT_NOT_AUTHORIZED
         assert "registered" in resp.meta.lower()
 
-    async def test_empty_recipient_fps_skips_verification(self, setup_with_cert):
+    async def test_empty_recipient_fps_skips_verification(
+        self, setup_with_cert, make_gmap_request
+    ):
         tmp_path, cert, _ = setup_with_cert
         # Empty dict = no fingerprint verification (backward compat)
         handler = GmapHandler(
@@ -365,20 +339,22 @@ class TestGmapFingerprintVerification:
             hostname="example.com",
             recipient_fps={},
         )
-        req = _make_request("/tag/", client_cert=cert)
+        req = make_gmap_request("/tag/", client_cert=cert)
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
         assert resp.status == SUCCESS
 
-    async def test_none_recipient_fps_skips_verification(self, setup_with_cert):
+    async def test_none_recipient_fps_skips_verification(
+        self, setup_with_cert, make_gmap_request
+    ):
         tmp_path, cert, _ = setup_with_cert
         handler = GmapHandler(
             mailbox_dir=tmp_path,
             hostname="example.com",
             recipient_fps=None,
         )
-        req = _make_request("/tag/", client_cert=cert)
+        req = make_gmap_request("/tag/", client_cert=cert)
 
         with self._patch_identity():
             resp = await handler.handle_request(req)
