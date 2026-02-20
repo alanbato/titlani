@@ -105,6 +105,10 @@ class ProbeVerifier:
 
             raw_fingerprint = response.fingerprint
             if not raw_fingerprint:
+                logger.warning(
+                    "verification_probe_empty_fingerprint",
+                    sender=sender_addr,
+                )
                 return VerificationResult(
                     verified=False,
                     reason="Probe response missing fingerprint",

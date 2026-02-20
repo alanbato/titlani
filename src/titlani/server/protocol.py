@@ -93,6 +93,11 @@ class MisfinServerProtocol(asyncio.Protocol):
             if len(self.buffer) >= self.request.content_length:
                 self._cancel_timeout()
                 self.request.raw_message = self.buffer[: self.request.content_length]
+                logger.debug(
+                    "body_received",
+                    mailbox=self.request.mailbox,
+                    content_length=self.request.content_length,
+                )
                 self._process_request()
 
     def _receive_header(self) -> None:
@@ -126,6 +131,11 @@ class MisfinServerProtocol(asyncio.Protocol):
             if b"\t" not in header_line:
                 try:
                     self.request = MisfinRequest.from_header_b(header_line)
+                    logger.debug(
+                        "b_format_request",
+                        client_ip=(self.peer_name[0] if self.peer_name else "unknown"),
+                        mailbox=self.request.mailbox,
+                    )
                 except ValueError as e2:
                     self._send_error(StatusCode.BAD_REQUEST, str(e2))
                     return
@@ -155,6 +165,12 @@ class MisfinServerProtocol(asyncio.Protocol):
             self.request.client_cert = client_cert
             raw_fp = get_certificate_fingerprint(client_cert)
             self.request.client_cert_fingerprint = normalize_fingerprint(raw_fp)
+        else:
+            logger.debug(
+                "no_client_cert",
+                client_ip=(self.peer_name[0] if self.peer_name else "unknown"),
+                mailbox=self.request.mailbox,
+            )
 
         # B requests have no body phase
         if self.request.protocol_version == "B" or self.request.content_length == 0:

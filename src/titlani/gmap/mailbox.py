@@ -88,6 +88,10 @@ class GmapMailbox:
             fd = -1  # Mark as closed
             os.replace(tmp_path, self.index_path)
         except BaseException:
+            logger.error(
+                "gmap_index_save_failed",
+                path=str(self.index_path),
+            )
             if fd >= 0:
                 try:
                     os.close(fd)
@@ -245,6 +249,11 @@ class GmapMailbox:
         filepath = self.mailbox_path / entry.filename
         if filepath.exists():
             filepath.unlink()
+            logger.info(
+                "gmap_message_file_deleted",
+                msgid=msgid,
+                filename=entry.filename,
+            )
         del self.messages[msgid]
         return True
 

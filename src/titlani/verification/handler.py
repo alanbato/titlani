@@ -61,6 +61,10 @@ class VerifyingHandler(MessageHandler):
 
         # Don't verify verification probes (prevents infinite loops)
         if request.content_length == 0:
+            logger.debug(
+                "verification_probe_bypass",
+                mailbox=request.mailbox,
+            )
             return await self.wrapped.handle_message(request)
 
         # Parse message to extract sender
@@ -72,10 +76,18 @@ class VerifyingHandler(MessageHandler):
 
         if not message.senders:
             if self.mode == VerificationMode.REQUIRED:
+                logger.warning(
+                    "verification_no_sender_required",
+                    mailbox=request.mailbox,
+                )
                 return MisfinResponse(
                     status=StatusCode.UNAUTHORIZED_SENDER,
                     meta="Sender required for verification",
                 )
+            logger.debug(
+                "verification_no_sender_optional",
+                mailbox=request.mailbox,
+            )
             return await self.wrapped.handle_message(request)
 
         sender = message.senders[0]
@@ -84,6 +96,16 @@ class VerifyingHandler(MessageHandler):
 
         # Attach verification metadata to the request for sidecar storage
         request.verification_result = wrapped_result
+
+        if result.verified:
+            logger.info(
+                "sender_verified",
+                sender=sender.address,
+                fingerprint=(
+                    result.fingerprint[:16] + "..." if result.fingerprint else None
+                ),
+                cached=result.cached,
+            )
 
         if not result.verified:
             if self.mode == VerificationMode.REQUIRED:

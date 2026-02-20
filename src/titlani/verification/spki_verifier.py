@@ -73,6 +73,7 @@ class SPKIVerifier:
             return VerificationResult(verified=False, reason=f"Connection error: {e}")
 
         if current_spki is None:
+            logger.warning("spki_no_peer_cert", hostname=hostname)
             return VerificationResult(verified=False, reason="No peer certificate")
 
         # Compare against last known SPKI (even if expired) to detect
@@ -92,6 +93,7 @@ class SPKIVerifier:
         if current_spki == last_known:
             # Same key, just refresh the timestamp
             self.cache.add_server_spki(hostname, current_spki)
+            logger.debug("spki_key_refreshed", hostname=hostname)
             return VerificationResult(verified=True, fingerprint=current_spki)
 
         # SPKI changed since last verification

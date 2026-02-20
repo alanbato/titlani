@@ -6,6 +6,10 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from tlacacoca import get_logger
+
+logger = get_logger(__name__)
+
 _DEFAULT_TTL = 86400  # 24 hours
 
 
@@ -68,6 +72,11 @@ class SubscriptionTokenStore:
             (list_name, address.lower(), token, now),
         )
         self._conn.commit()
+        logger.debug(
+            "subscription_token_created",
+            list_name=list_name,
+            address=address.lower(),
+        )
         return token
 
     def verify_token(self, list_name: str, token: str) -> str | None:
@@ -83,6 +92,10 @@ class SubscriptionTokenStore:
         )
         row = cur.fetchone()
         if row is None:
+            logger.debug(
+                "subscription_token_invalid",
+                list_name=list_name,
+            )
             return None
         address = row[0]
         self._conn.execute(
@@ -90,6 +103,11 @@ class SubscriptionTokenStore:
             (list_name, address),
         )
         self._conn.commit()
+        logger.debug(
+            "subscription_token_consumed",
+            list_name=list_name,
+            address=address,
+        )
         return address
 
     def is_pending(self, list_name: str, address: str) -> bool:
@@ -134,7 +152,13 @@ class SubscriptionTokenStore:
             (cutoff.isoformat(),),
         )
         self._conn.commit()
-        return cur.rowcount
+        count = cur.rowcount
+        if count > 0:
+            logger.info(
+                "subscription_cleanup",
+                expired_count=count,
+            )
+        return count
 
     def close(self) -> None:
         self._conn.close()

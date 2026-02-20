@@ -90,6 +90,11 @@ def add_subscriber(mailbox_path: Path, address: str) -> bool:
     subscribers_file = mailbox_path / SUBSCRIBERS_FILE
     with subscribers_file.open("a") as f:
         f.write(f"{address}\n")
+    logger.debug(
+        "list_subscriber_added",
+        mailbox=str(mailbox_path.name),
+        address=address,
+    )
     return True
 
 
@@ -103,6 +108,11 @@ def remove_subscriber(mailbox_path: Path, address: str) -> bool:
     lines = subscribers_file.read_text().splitlines()
     new_lines = [line for line in lines if line.strip().lower() != address]
     subscribers_file.write_text("\n".join(new_lines) + "\n")
+    logger.debug(
+        "list_subscriber_removed",
+        mailbox=str(mailbox_path.name),
+        address=address,
+    )
     return True
 
 

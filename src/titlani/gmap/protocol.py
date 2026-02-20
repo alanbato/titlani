@@ -90,8 +90,15 @@ class GeminiServerProtocol(asyncio.Protocol):
         try:
             request = parse_gemini_request(request_line, client_cert)
         except ValueError as e:
+            logger.warning(
+                "gmap_parse_failed",
+                client_ip=(self.peer_name[0] if self.peer_name else "unknown"),
+                error=str(e),
+            )
             self._send_error(BAD_REQUEST, str(e))
             return
+
+        self._request_path = request.path
 
         logger.debug(
             "gmap_request_parsed",
@@ -146,6 +153,7 @@ class GeminiServerProtocol(asyncio.Protocol):
             client_ip=(self.peer_name[0] if self.peer_name else "unknown"),
             status=response.status,
             duration_ms=round(duration_ms, 2),
+            path=getattr(self, "_request_path", None),
         )
 
         self.transport.write(response.to_bytes())

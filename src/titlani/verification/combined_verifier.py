@@ -48,8 +48,21 @@ class CombinedVerifier:
             if not spki_result.verified:
                 reasons.append(f"spki: {spki_result.reason}")
             reason = "; ".join(reasons)
+            logger.info(
+                "combined_verification_failed",
+                sender=address.address,
+                probe_ok=probe_result.verified,
+                spki_ok=spki_result.verified,
+                reason=reason,
+            )
         else:
             reason = None
+            logger.info(
+                "combined_verification_success",
+                sender=address.address,
+                probe_ok=probe_result.verified,
+                spki_ok=spki_result.verified,
+            )
 
         return VerificationResult(
             verified=verified,

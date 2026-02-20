@@ -232,8 +232,12 @@ class FileMailboxHandler(MessageHandler):
                 asyncio.ensure_future(
                     self._send_auto_reply(mailbox, mailbox_path, parsed_msg)
                 )
-        except Exception:
-            pass  # Never let auto-reply affect delivery
+        except Exception as e:
+            logger.warning(
+                "auto_reply_trigger_error",
+                mailbox=mailbox,
+                error=str(e),
+            )
 
     def _get_recipient_fingerprint(self, mailbox: str) -> str:
         """Get the normalized fingerprint for a mailbox recipient."""
@@ -253,8 +257,12 @@ class FileMailboxHandler(MessageHandler):
             try:
                 msg = request.parse_message()
                 senders.extend(msg.senders)
-            except (ValueError, Exception):
-                pass
+            except (ValueError, Exception) as e:
+                logger.debug(
+                    "sender_parse_failed",
+                    mailbox=request.mailbox,
+                    error=str(e),
+                )
         return senders
 
     @staticmethod
@@ -583,6 +591,11 @@ class FileMailboxHandler(MessageHandler):
         sender_addr = senders[0].address.lower()
         subscribers = load_subscribers(mailbox_path)
         if is_subscriber(sender_addr, subscribers):
+            logger.debug(
+                "subscription_already_subscribed",
+                mailbox=mailbox,
+                address=sender_addr,
+            )
             return MisfinResponse(
                 status=StatusCode.SUCCESS,
                 meta="Already subscribed",
@@ -621,6 +634,12 @@ class FileMailboxHandler(MessageHandler):
         # Verify the confirmed address matches one of the senders
         sender_addrs = {s.address.lower() for s in senders}
         if address.lower() not in sender_addrs:
+            logger.warning(
+                "subscription_confirm_mismatch",
+                mailbox=mailbox,
+                token_address=address,
+                sender_addresses=list(sender_addrs),
+            )
             return MisfinResponse(
                 status=StatusCode.BAD_REQUEST,
                 meta="Token does not match sender",
@@ -799,8 +818,12 @@ class FileMailboxHandler(MessageHandler):
             asyncio.ensure_future(
                 self._forward_to_list(mailbox, mailbox_path, parsed_msg, subscribers)
             )
-        except Exception:
-            pass  # Never let list forwarding affect delivery
+        except Exception as e:
+            logger.warning(
+                "list_forward_trigger_error",
+                mailbox=mailbox,
+                error=str(e),
+            )
 
     async def _forward_to_list(
         self,

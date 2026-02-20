@@ -89,12 +89,22 @@ class GmapHandler:
             return None
         expected_fp = self.recipient_fps.get(mailbox)
         if expected_fp is None:
+            logger.warning(
+                "gmap_auth_no_registration",
+                mailbox=mailbox,
+            )
             return GeminiResponse(
                 CERT_NOT_AUTHORIZED,
                 "No registered identity for mailbox",
             )
         client_fp = normalize_fingerprint(get_certificate_fingerprint(client_cert))
         if client_fp != expected_fp:
+            logger.warning(
+                "gmap_auth_fingerprint_mismatch",
+                mailbox=mailbox,
+                expected=expected_fp[:16] + "...",
+                got=client_fp[:16] + "...",
+            )
             return GeminiResponse(
                 CERT_NOT_AUTHORIZED,
                 "Certificate fingerprint mismatch",
@@ -102,6 +112,12 @@ class GmapHandler:
         return None
 
     async def handle_request(self, request: GeminiRequest) -> GeminiResponse:
+        logger.debug(
+            "gmap_handle_request",
+            path=request.path,
+            has_cert=request.client_cert is not None,
+        )
+
         # Public /list/ routes — no cert required
         if request.path.startswith("/list/"):
             return self._route_list(request.path)
@@ -121,14 +137,17 @@ class GmapHandler:
         """Verify client cert and resolve mailbox. Returns the mailbox
         on success or an error response on failure."""
         if request.client_cert is None:
+            logger.debug("gmap_auth_no_cert")
             return GeminiResponse(CERT_REQUIRED, "Client certificate required")
 
         try:
             identity = extract_identity(request.client_cert)
         except Exception:
+            logger.warning("gmap_auth_invalid_cert")
             return GeminiResponse(CERT_NOT_AUTHORIZED, "Invalid certificate")
 
         if not identity.mailbox or not identity.hostname:
+            logger.warning("gmap_auth_incomplete_identity")
             return GeminiResponse(CERT_NOT_AUTHORIZED, "Certificate missing identity")
 
         mailbox = identity.mailbox
@@ -140,6 +159,7 @@ class GmapHandler:
             or ".." in mailbox
             or not re.fullmatch(r"[a-zA-Z0-9._-]+", mailbox)
         ):
+            logger.warning("gmap_auth_invalid_mailbox", mailbox=repr(mailbox))
             return GeminiResponse(CERT_NOT_AUTHORIZED, "Invalid mailbox name")
 
         fp_error = self._verify_fingerprint(mailbox, request.client_cert)
@@ -156,10 +176,12 @@ class GmapHandler:
             return GeminiResponse(CERT_NOT_AUTHORIZED, "Invalid mailbox")
 
         if not mailbox_path.is_dir():
+            logger.info("gmap_auth_mailbox_not_found", mailbox=mailbox)
             return GeminiResponse(NOT_FOUND, "Mailbox not found")
 
         mbox = GmapMailbox(mailbox_path)
         mbox.load()
+        logger.debug("gmap_auth_success", mailbox=mailbox)
         return mbox
 
     def _route(
@@ -268,6 +290,12 @@ class GmapHandler:
 
         mbox.add_tag(msgid, tag)
         mbox.save()
+        logger.info(
+            "gmap_tag_added",
+            mailbox=str(mbox.mailbox_path.name),
+            msgid=msgid,
+            tag=tag,
+        )
         return GeminiResponse(SUCCESS, "text/plain", b"Tag added")
 
     def _handle_remove_tag(
@@ -278,6 +306,12 @@ class GmapHandler:
 
         mbox.remove_tag(msgid, tag)
         mbox.save()
+        logger.info(
+            "gmap_tag_removed",
+            mailbox=str(mbox.mailbox_path.name),
+            msgid=msgid,
+            tag=tag,
+        )
         return GeminiResponse(SUCCESS, "text/plain", b"Tag removed")
 
     def _route_list(self, path: str) -> GeminiResponse:
@@ -331,9 +365,19 @@ class GmapHandler:
             return GeminiResponse(NOT_FOUND, "Message not found")
 
         if not mbox.delete_message(msgid):
+            logger.debug(
+                "gmap_delete_not_in_trash",
+                mailbox=str(mbox.mailbox_path.name),
+                msgid=msgid,
+            )
             return GeminiResponse(NOT_FOUND, "Message not in Trash")
 
         mbox.save()
+        logger.info(
+            "gmap_message_deleted",
+            mailbox=str(mbox.mailbox_path.name),
+            msgid=msgid,
+        )
         return GeminiResponse(SUCCESS, "text/plain", b"Message deleted")
 
 

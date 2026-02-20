@@ -5,6 +5,10 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from tlacacoca import get_logger
+
+logger = get_logger(__name__)
+
 _DEFAULT_TTL = 604800  # 7 days
 
 
@@ -81,6 +85,7 @@ class SenderVerificationCache:
             (address, fingerprint, now),
         )
         self._conn.commit()
+        logger.debug("verification_cache_write", address=address)
 
     def revoke(self, address: str) -> bool:
         """Remove *address* from cache. Returns True if it existed."""
@@ -89,6 +94,8 @@ class SenderVerificationCache:
             (address,),
         )
         self._conn.commit()
+        if cur.rowcount > 0:
+            logger.info("verification_cache_revoked", address=address)
         return cur.rowcount > 0
 
     def list_verified(
@@ -116,7 +123,10 @@ class SenderVerificationCache:
             (cutoff.isoformat(),),
         )
         self._conn.commit()
-        return cur1.rowcount + cur2.rowcount
+        total = cur1.rowcount + cur2.rowcount
+        if total > 0:
+            logger.info("verification_cache_cleanup", expired_count=total)
+        return total
 
     # --- SPKI cache methods ---
 
@@ -156,6 +166,7 @@ class SenderVerificationCache:
             (hostname, spki_hash, now),
         )
         self._conn.commit()
+        logger.debug("spki_cache_write", hostname=hostname)
 
     def list_server_spki(self) -> list[tuple[str, str, datetime]]:
         """Return all server SPKI entries as (hostname, spki_hash, verified_at)."""
@@ -172,6 +183,11 @@ class SenderVerificationCache:
         """Remove all server SPKI entries. Returns count of removed rows."""
         cur = self._conn.execute("DELETE FROM server_spki")
         self._conn.commit()
+        if cur.rowcount > 0:
+            logger.info(
+                "spki_cache_cleared",
+                count=cur.rowcount,
+            )
         return cur.rowcount
 
     def close(self) -> None:

@@ -11,6 +11,7 @@ from tlacacoca import (
     TOFUDatabase,
     create_client_context,
     get_certificate_fingerprint,
+    get_logger,
 )
 
 from ..content.gemmail import GemmailMessage, MisfinAddress
@@ -19,6 +20,8 @@ from ..protocol.request import MisfinRequest
 from ..protocol.response import MisfinResponse
 from ..protocol.status import StatusCode, is_redirect
 from .protocol import MisfinClientProtocol
+
+logger = get_logger(__name__)
 
 _RETRY_DELAY_RE = re.compile(r"(\d+)\s*s")
 
@@ -113,6 +116,7 @@ class MisfinClient:
             body=full_body,
         )
 
+        logger.debug("client_send", to=to)
         message_bytes = message.to_bytes()
         return await self.send_raw(to, message_bytes)
 
@@ -154,19 +158,41 @@ class MisfinClient:
         retries = 0
         while response.status == StatusCode.SLOW_DOWN and retries < self.max_retries:
             delay = self._parse_retry_delay(response.meta)
+            logger.warning(
+                "client_slow_down_retry",
+                hostname=hostname,
+                attempt=retries + 1,
+                delay=delay,
+            )
             await asyncio.sleep(delay)
             response = await self._send_request_once(request, hostname)
             retries += 1
+
+        if response.status == StatusCode.SLOW_DOWN and retries >= self.max_retries:
+            logger.warning(
+                "client_max_retries_exceeded",
+                hostname=hostname,
+                retries=retries,
+            )
 
         # Handle redirects
         if is_redirect(response.status):
             redirect_addr = response.redirect_address
             if redirect_addr:
                 if redirect_depth >= MAX_REDIRECTS:
+                    logger.warning(
+                        "client_redirect_max_depth",
+                        hostname=hostname,
+                        depth=redirect_depth,
+                    )
                     return MisfinResponse(
                         status=StatusCode.PERMANENT_FAILURE,
                         meta="Too many redirects",
                     )
+                logger.info(
+                    "client_redirect_following",
+                    target=redirect_addr,
+                )
                 return await self.send_raw(
                     redirect_addr,
                     request.raw_message,
@@ -179,6 +205,11 @@ class MisfinClient:
             and request.protocol_version == "C"
             and response.status in self._B_FALLBACK_STATUSES
         ):
+            logger.info(
+                "client_b_fallback",
+                hostname=hostname,
+                original_status=response.status,
+            )
             return await self._send_request_b(request, hostname)
 
         return response
@@ -189,7 +220,10 @@ class MisfinClient:
         try:
             b_bytes = request.to_bytes_b()
         except ValueError:
-            # Message too large for B format, return original response
+            logger.warning(
+                "client_b_message_too_large",
+                hostname=hostname,
+            )
             return MisfinResponse(
                 status=StatusCode.BAD_REQUEST,
                 meta="Message too large for Misfin(B) format",
@@ -211,6 +245,10 @@ class MisfinClient:
                 timeout=self.timeout,
             )
         except (TimeoutError, OSError):
+            logger.warning(
+                "client_b_connection_failed",
+                hostname=hostname,
+            )
             return MisfinResponse(
                 status=StatusCode.TEMPORARY_FAILURE,
                 meta="Misfin(B) fallback connection failed",
@@ -222,6 +260,10 @@ class MisfinClient:
             )
             return response
         except TimeoutError:
+            logger.warning(
+                "client_b_timeout",
+                hostname=hostname,
+            )
             return MisfinResponse(
                 status=StatusCode.TEMPORARY_FAILURE,
                 meta="Misfin(B) fallback timed out",
@@ -270,6 +312,12 @@ class MisfinClient:
                         old_info = self.tofu_db.get_host_info(hostname, self.port)
                         old_fp = old_info["fingerprint"] if old_info else "unknown"
                         new_fp = get_certificate_fingerprint(cert)
+                        logger.warning(
+                            "client_tofu_cert_changed",
+                            hostname=hostname,
+                            old_fingerprint=old_fp[:16] + "...",
+                            new_fingerprint=new_fp[:16] + "...",
+                        )
                         raise CertificateChangedError(
                             hostname,
                             self.port,
@@ -277,10 +325,26 @@ class MisfinClient:
                             new_fp,
                         )
                     elif message == "first_use":
+                        fp = get_certificate_fingerprint(cert)
+                        logger.info(
+                            "client_tofu_first_use",
+                            hostname=hostname,
+                            fingerprint=fp[:16] + "...",
+                        )
                         self.tofu_db.trust(hostname, self.port, cert)
+                else:
+                    logger.warning(
+                        "client_no_peer_cert",
+                        hostname=hostname,
+                    )
 
             response: MisfinResponse = await asyncio.wait_for(
                 response_future, timeout=self.timeout
+            )
+            logger.debug(
+                "client_response_received",
+                hostname=hostname,
+                status=response.status,
             )
             return response
         except TimeoutError as e:

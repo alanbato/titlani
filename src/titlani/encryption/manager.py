@@ -18,6 +18,9 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import (
 )
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from tlacacoca import get_logger
+
+logger = get_logger(__name__)
 
 _HKDF_INFO = b"titlani-mailbox-encryption"
 _NONCE_SIZE = 12
@@ -80,6 +83,7 @@ class EncryptionManager:
     def encrypt(self, mailbox: str, data: bytes) -> bytes:
         if mailbox not in self._public_keys:
             raise ValueError(f"No encryption key loaded for mailbox: {mailbox}")
+        logger.debug("encryption_encrypt", mailbox=mailbox)
 
         recipient_pub = self._public_keys[mailbox]
 
@@ -99,11 +103,21 @@ class EncryptionManager:
 
     def decrypt(self, mailbox: str, token: bytes) -> bytes:
         if mailbox not in self._private_keys:
+            logger.error(
+                "encryption_missing_private_key",
+                mailbox=mailbox,
+            )
             raise ValueError(f"No private key loaded for mailbox: {mailbox}")
+        logger.debug("encryption_decrypt", mailbox=mailbox)
         return _decrypt_with_private_key(self._private_keys[mailbox], token)
 
     @classmethod
     def decrypt_with_key(cls, private_key_path: Path, token: bytes) -> bytes:
+        if not private_key_path.exists():
+            logger.error(
+                "encryption_missing_key_file",
+                path=str(private_key_path),
+            )
         pem_data = private_key_path.read_bytes()
         private_key = serialization.load_pem_private_key(pem_data, password=None)
         if not isinstance(private_key, X25519PrivateKey):
