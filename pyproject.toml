@@ -1,6 +1,6 @@
 [project]
 name = "titlani"
-version = "0.2.0"
+version = "0.3.0"
 description = "Misfin(C) mail protocol client and server library"
 readme = "README.md"
 authors = [
