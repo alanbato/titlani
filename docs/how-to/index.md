@@ -100,6 +100,14 @@ Practical recipes for common tasks. Each guide focuses on a single goal and assu
 
     [:octicons-arrow-right-24: Guide](deploy-to-production.md)
 
+-   :material-transit-connection-variant:{ .lg .middle } **Run Behind a TCP Relay**
+
+    ---
+
+    Keep real client IPs behind Traefik, HAProxy, or nginx with the PROXY protocol.
+
+    [:octicons-arrow-right-24: Guide](proxy-protocol.md)
+
 -   :material-puzzle:{ .lg .middle } **Custom Message Handler**
 
     ---

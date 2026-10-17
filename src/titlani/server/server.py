@@ -9,6 +9,7 @@ from tlacacoca import (
     AccessControl,
     AccessControlConfig,
     MiddlewareChain,
+    ProxyProtocolConfig,
     RateLimitConfig,
     RateLimiter,
     TLSServerProtocol,
@@ -284,12 +285,25 @@ def _setup_verification(
     return verified_handler, cache
 
 
+def _build_proxy_protocol(config: ServerConfig) -> ProxyProtocolConfig | None:
+    """Build the PROXY protocol config shared by all listeners, if enabled."""
+    proxy_protocol = config.proxy_protocol.to_tlacacoca()
+    if proxy_protocol is not None:
+        logger.info(
+            "proxy_protocol_enabled",
+            trusted_sources=config.proxy_protocol.trusted_sources,
+            header_timeout=config.proxy_protocol.header_timeout,
+        )
+    return proxy_protocol
+
+
 async def _start_gmap_server(
     config: ServerConfig,
     certfile: Path,
     keyfile: Path,
     cert_dir: Path,
     recipient_fps: dict[str, str],
+    proxy_protocol: ProxyProtocolConfig | None = None,
 ) -> asyncio.Server | None:
     """Start the GMAP server if enabled and available."""
     if not config.gmap.enable or not _gmap_available:
@@ -314,6 +328,7 @@ async def _start_gmap_server(
                 request_handler=gmap_handler.handle_request,
             ),
             gmap_ssl_context,
+            proxy_protocol=proxy_protocol,
         ),
         host=config.server.host,
         port=config.gmap.port,
@@ -346,6 +361,7 @@ async def start_server(
     )
 
     middleware = _build_middleware(config)
+    proxy_protocol = _build_proxy_protocol(config)
 
     # Create mailbox directory with restrictive permissions
     config.server.mailbox_dir.mkdir(parents=True, exist_ok=True)
@@ -401,6 +417,7 @@ async def start_server(
                 middleware=middleware,
             ),
             ssl_context,
+            proxy_protocol=proxy_protocol,
         ),
         host=config.server.host,
         port=config.server.port,
@@ -413,13 +430,14 @@ async def start_server(
         hostname=config.server.hostname,
         rate_limiting=config.rate_limit.enable,
         access_control=config.access_control.enable,
+        proxy_protocol=config.proxy_protocol.enable,
         encryption=config.encryption.enable,
         gmap=config.gmap.enable,
         mailbox_dir=str(config.server.mailbox_dir),
     )
 
     gmap_server = await _start_gmap_server(
-        config, certfile, keyfile, cert_dir, recipient_fps
+        config, certfile, keyfile, cert_dir, recipient_fps, proxy_protocol
     )
 
     try:

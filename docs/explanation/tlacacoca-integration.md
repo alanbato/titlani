@@ -18,6 +18,8 @@ Tlacacoca is a general-purpose TLS and certificate toolkit for Gemini-family pro
 | `MiddlewareChain` | Composable request middleware |
 | `RateLimiter` | Token bucket rate limiting middleware |
 | `AccessControl` | IP allow/deny middleware |
+| `TLSServerProtocol` | PyOpenSSL-based TLS for the Misfin and GMAP listeners (accepts self-signed client certs) |
+| `ProxyProtocolConfig` | PROXY protocol support for running behind a TCP relay (`[proxy_protocol]`) |
 | `DenialReason` | Middleware denial reasons (mapped to Misfin status codes) |
 | Structured logging | Request/error logging via `structlog` |
 

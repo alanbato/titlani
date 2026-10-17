@@ -32,7 +32,7 @@ The config file is optional. If absent, you must pass `mailbox_dir` as a CLI arg
 
 ## Server Configuration
 
-The Titlani server is configured via a TOML file with eight sections.
+The Titlani server is configured via a TOML file with nine sections.
 
 ## `[server]`
 
@@ -77,6 +77,18 @@ IP-based access control.
 | `default_allow` | bool | `true` | Allow IPs not in either list |
 
 Allow list takes priority over deny list.
+
+## `[proxy_protocol]`
+
+PROXY protocol support for running behind a TCP relay (Traefik, HAProxy, nginx `stream`). Applies to both the Misfin and GMAP listeners. See [Run Behind a TCP Relay](../how-to/proxy-protocol.md) for details.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enable` | bool | `false` | Enable PROXY protocol (v1 and v2) |
+| `trusted_sources` | list[string] | `[]` | IPs or CIDRs (IPv4/IPv6) of relays allowed to send PROXY headers. Required when enabled |
+| `header_timeout` | float | `5.0` | Seconds a trusted relay has to send the header before the connection is closed |
+
+Connections from `trusted_sources` must start with a valid PROXY header, and the client address it carries is used for rate limiting, access control, and logs. Headers from any other host are never honored: those connections are closed. Plain TLS connections from other hosts are handled as direct connections.
 
 ## `[verification]`
 
@@ -163,6 +175,10 @@ allow_list = ["192.168.0.0/16"]
 deny_list = ["10.0.0.99"]
 default_allow = false
 
+[proxy_protocol]
+enable = true
+trusted_sources = ["100.64.0.1"]
+
 [verification]
 mode = "optional"
 method = "probe"
@@ -194,3 +210,4 @@ archive = true
 - Certificate files exist if specified
 - Key files exist if specified
 - Verification mode is one of `"off"`, `"optional"`, or `"required"`
+- `proxy_protocol.trusted_sources` entries are valid IPs or CIDRs, with at least one entry when `proxy_protocol.enable` is true

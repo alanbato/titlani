@@ -196,6 +196,8 @@ titlani mail list -m alice
 
 Misfin uses TLS on port 1958 (not HTTP). Services like Cloudflare that only proxy HTTP/HTTPS traffic will not work — you need a direct TCP connection. If you're behind such a proxy, either bypass it for port 1958 or use a different hosting setup.
 
+A TCP relay that passes TLS through untouched (Traefik, HAProxy, nginx `stream`) does work. Enable the PROXY protocol on the relay and in Titlani so the server still sees client IPs. See [Run Behind a TCP Relay](proxy-protocol.md).
+
 Also check your firewall:
 
 ```bash

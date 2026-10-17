@@ -23,6 +23,15 @@ allow_list = []
 deny_list = []
 default_allow = true
 
+[proxy_protocol]
+# Enable when running behind a TCP relay (Traefik, HAProxy, nginx stream)
+# that sends a PROXY protocol header, so rate limiting, access control and
+# logs see real client IPs. Applies to both the Misfin and GMAP listeners.
+# trusted_sources lists the relay's own IPs/CIDRs; only they may send headers.
+enable = false
+trusted_sources = []
+# header_timeout = 5.0
+
 [verification]
 mode = "optional"
 cache_path = "/var/lib/titlani/verification_cache.db"

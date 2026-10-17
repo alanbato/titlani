@@ -54,6 +54,10 @@ refill_rate = 0.1
 retry_after = 60
 ```
 
+## Behind a TCP Relay
+
+Rate limits are tracked per client IP. If Titlani runs behind a TCP relay, every connection comes from the relay's IP, so all clients share one bucket. Enable [`[proxy_protocol]`](proxy-protocol.md) so the limiter sees each client's real IP.
+
 ## Client Behavior
 
 When rate limited, clients receive:

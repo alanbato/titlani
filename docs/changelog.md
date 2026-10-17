@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added PROXY protocol (v1/v2) support for running behind a TCP relay such as Traefik, HAProxy, or nginx `stream`. Enable with `[proxy_protocol] enable = true` and list the relay addresses in `trusted_sources`. Applies to both the Misfin and GMAP listeners, so rate limiting, access control, and logs see the real client IP. Requires tlacacoca 0.3.0
 - Added `init` wizard — interactive command that generates server and client config files with feature toggles for GMAP, encryption, verification, auto-reply, rate limiting, and access control
 - Added per-mailbox contact blocking — server rejects messages from blocked senders with status 61 (Unauthorized Sender). Manage via `mail block` / `mail unblock` CLI commands or a `.blocked` file in the mailbox directory
 - Added unread tracking — server stores new messages with a `.gemmail.new` suffix (`.gemmail.enc.new` for encrypted). `mail list` shows a `NEW` indicator and new message count. `mail read` marks messages as read by removing the `.new` suffix. GMAP sync preserves tags when files are renamed

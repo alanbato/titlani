@@ -176,6 +176,13 @@ def display_server_config(config: ServerConfig, console: Console) -> None:
     else:
         table.add_row("Access Control", "[dim]Disabled[/]")
 
+    # PROXY protocol
+    if config.proxy_protocol.enable:
+        sources = ", ".join(config.proxy_protocol.trusted_sources)
+        table.add_row("PROXY Protocol", f"[green]Enabled[/] (trusted: {sources})")
+    else:
+        table.add_row("PROXY Protocol", "[dim]Disabled[/]")
+
     # GMAP
     if config.gmap.enable:
         table.add_row(

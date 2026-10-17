@@ -90,3 +90,61 @@ class TestMailboxDirPermissions:
         os.chmod(mailbox_dir, 0o700)
         mode = stat.S_IMODE(mailbox_dir.stat().st_mode)
         assert mode == 0o700
+
+
+class TestProxyProtocolConfig:
+    def test_disabled_by_default(self):
+        config = ServerConfig()
+        assert config.proxy_protocol.enable is False
+        assert config.proxy_protocol.trusted_sources == []
+        assert config.proxy_protocol.header_timeout == 5.0
+        assert config.proxy_protocol.to_tlacacoca() is None
+
+    def test_from_toml(self, tmp_path):
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text(
+            """
+[proxy_protocol]
+enable = true
+trusted_sources = ["100.64.0.0/10", "fd7a:115c:a1e0::/48", "10.0.0.5"]
+header_timeout = 2.5
+"""
+        )
+        config = ServerConfig.from_toml(toml_file)
+        assert config.proxy_protocol.enable is True
+        assert config.proxy_protocol.trusted_sources == [
+            "100.64.0.0/10",
+            "fd7a:115c:a1e0::/48",
+            "10.0.0.5",
+        ]
+        proxy = config.proxy_protocol.to_tlacacoca()
+        assert proxy is not None
+        assert proxy.header_timeout == 2.5
+        assert proxy.is_trusted("100.101.1.2")
+        assert proxy.is_trusted("fd7a:115c:a1e0::1")
+        assert proxy.is_trusted("10.0.0.5")
+        assert not proxy.is_trusted("203.0.113.9")
+
+    def test_invalid_trusted_source_rejected(self):
+        with pytest.raises(ValidationError, match="trusted source"):
+            ServerConfig(
+                proxy_protocol={"enable": True, "trusted_sources": ["not-an-ip"]}
+            )
+
+    def test_enable_requires_trusted_sources(self):
+        with pytest.raises(ValidationError, match="trusted_sources"):
+            ServerConfig(proxy_protocol={"enable": True})
+
+    def test_disabled_with_empty_sources_is_fine(self):
+        config = ServerConfig(proxy_protocol={"enable": False})
+        assert config.proxy_protocol.to_tlacacoca() is None
+
+    def test_header_timeout_must_be_positive(self):
+        with pytest.raises(ValidationError):
+            ServerConfig(
+                proxy_protocol={
+                    "enable": True,
+                    "trusted_sources": ["10.0.0.1"],
+                    "header_timeout": 0,
+                }
+            )
