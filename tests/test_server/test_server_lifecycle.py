@@ -64,6 +64,38 @@ class TestAutoCleanup:
         mock_cache.close.assert_called_once()
 
 
+class TestConfiguredCertPaths:
+    async def test_missing_configured_certs_generated_on_start(self, tmp_path):
+        """Configured-but-missing cert paths are generated instead of erroring."""
+        cert_dir = tmp_path / "etc" / "titlani"
+        config = ServerConfig(
+            server=ServerSection(
+                host="127.0.0.1",
+                port=1958,
+                hostname="test.example.com",
+                mailbox_dir=tmp_path / "mailboxes",
+                certfile=cert_dir / "server.pem",
+                keyfile=cert_dir / "server.key",
+                identity_certfile=cert_dir / "identity.pem",
+                identity_keyfile=cert_dir / "identity.key",
+            )
+        )
+
+        with patch("titlani.server.server.asyncio.get_running_loop") as mock_loop:
+            mock_server = AsyncMock()
+            mock_server.serve_forever = AsyncMock(side_effect=asyncio.CancelledError)
+            mock_server.__aenter__ = AsyncMock(return_value=mock_server)
+            mock_server.__aexit__ = AsyncMock(return_value=False)
+            mock_loop.return_value.create_server = AsyncMock(return_value=mock_server)
+
+            await start_server(config)
+
+        for name in ("server.pem", "server.key", "identity.pem", "identity.key"):
+            assert (cert_dir / name).is_file()
+        assert b"BEGIN CERTIFICATE" in (cert_dir / "server.pem").read_bytes()
+        assert b"BEGIN CERTIFICATE" in (cert_dir / "identity.pem").read_bytes()
+
+
 class TestRecipientFingerprints:
     def test_loads_pem_files(self, tmp_path):
         """Should load fingerprints from <mailbox>.pem files."""

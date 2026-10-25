@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.1
+
+- Fixed `titlani serve` failing with `Configuration error: Certificate file not found` when `certfile`/`keyfile` are set to paths that don't exist yet. Certificates are now auto-generated at the configured paths on first start, as documented. Configured certificate paths that exist but are not regular files (e.g. directories) are still rejected with a clear error
+
 ## v0.4.0
 
 - Added PROXY protocol (v1/v2) support for running behind a TCP relay such as Traefik, HAProxy, or nginx `stream`. Enable with `[proxy_protocol] enable = true` and list the relay addresses in `trusted_sources`. Applies to both the Misfin and GMAP listeners, so rate limiting, access control, and logs see the real client IP. Requires tlacacoca 0.3.0

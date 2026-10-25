@@ -24,9 +24,23 @@ class TestServerConfig:
         with pytest.raises(ValidationError):
             ServerConfig(server=ServerSection(port=0))
 
-    def test_validate_missing_certfile(self, tmp_path):
-        config = ServerConfig(server=ServerSection(certfile=tmp_path / "nonexistent.pem"))
-        with pytest.raises(ValueError, match="Certificate file not found"):
+    def test_validate_missing_certfile_allowed(self, tmp_path):
+        """Missing configured cert paths are auto-generated, so not an error."""
+        config = ServerConfig(
+            server=ServerSection(
+                certfile=tmp_path / "nonexistent.pem",
+                keyfile=tmp_path / "nonexistent.key",
+                identity_certfile=tmp_path / "nonexistent-id.pem",
+                identity_keyfile=tmp_path / "nonexistent-id.key",
+            )
+        )
+        config.validate_files()
+
+    def test_validate_certfile_is_directory(self, tmp_path):
+        cert_dir = tmp_path / "server.pem"
+        cert_dir.mkdir()
+        config = ServerConfig(server=ServerSection(certfile=cert_dir))
+        with pytest.raises(ValueError, match="Certificate file is not a regular file"):
             config.validate_files()
 
     def test_from_toml(self, tmp_path):

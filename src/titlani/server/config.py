@@ -130,7 +130,18 @@ class ServerConfig(BaseModel):
         return cls(**data)
 
     def validate_files(self) -> None:
-        if self.server.certfile and not self.server.certfile.exists():
-            raise ValueError(f"Certificate file not found: {self.server.certfile}")
-        if self.server.keyfile and not self.server.keyfile.exists():
-            raise ValueError(f"Key file not found: {self.server.keyfile}")
+        """Check configured certificate paths before startup.
+
+        Missing files are fine: the server auto-generates certificates at the
+        configured paths on first start.  A path that exists but is not a
+        regular file (e.g. a directory) can never be used, so it is rejected.
+        """
+        paths = {
+            "Certificate file": self.server.certfile,
+            "Key file": self.server.keyfile,
+            "Identity certificate file": self.server.identity_certfile,
+            "Identity key file": self.server.identity_keyfile,
+        }
+        for label, path in paths.items():
+            if path is not None and path.exists() and not path.is_file():
+                raise ValueError(f"{label} is not a regular file: {path}")
